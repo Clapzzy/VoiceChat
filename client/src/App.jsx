@@ -14,8 +14,8 @@ function App() {
 
   const microphoneStreamRef = useRef()
   const micNodeRef = useRef()
-  const microphoneDevices = useRef([])
-  const currentMic = useState()
+  const [microphoneDevices, setMicrophoneDevices] = useState([])
+  const [currentMic, setCurrentMic] = useState()
 
   useEffect(() => {
     audioContextRef.current = new AudioContext()
@@ -28,12 +28,14 @@ function App() {
     navigator.mediaDevices.enumerateDevices()
       .then((devices) => {
         devices.forEach((device) => {
+          console.log(device)
           if (device.kind == "audioinput") {
 
             if (device.deviceId == "default") {
-              currentMic.current = device
+              setCurrentMic(device)
             }
-            microphoneDevices.current.push(device)
+            console.log("setting up mic : ", device.label)
+            setMicrophoneDevices([...microphoneDevices, device])
           }
         })
       })
@@ -45,13 +47,13 @@ function App() {
   }, [])
 
   useEffect(() => {
-
-    navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: currentMic.current } }, video: false })
+    navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: currentMic } }, video: false })
       .then((mediaStream) => {
         microphoneStreamRef.current = mediaStream
         gainRef.current = audioContextRef.current.createGain(); // Create a volume control node
         gainRef.current.gain.value = 1; // Set volume to 50%
         micNodeRef.current = audioContextRef.current.createMediaStreamSource(microphoneStreamRef.current)
+        console.log("using mic : ", currentMic)
 
         micNodeRef.current.connect(gainRef.current)
         gainRef.current.connect(audioContextRef.current.destination)
@@ -59,8 +61,7 @@ function App() {
       .catch((err) => {
         console.log("Got an error :", err)
       })
-
-  }, [currentMic.current])
+  }, [currentMic])
 
   useEffect(() => {
     if (mute == true) {
@@ -73,14 +74,8 @@ function App() {
   return (
     <>
       <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
       </div>
-      <h1>Vite + React</h1>
+      <h1>Voice chat demo</h1>
       <div className="card">
         <button onClick={() => setCount((count) => count + 1)}>
           count is {count}
@@ -93,6 +88,16 @@ function App() {
         <p>
           Edit <code>src/App.jsx</code> and save to test HMR
         </p>
+        <div>
+          <select className='w-full h-10 ' value={currentMic} onChange={(event) => setCurre}>
+            {microphoneDevices.map((mic, index) => {
+              console.log(mic.label)
+              return (
+                <option value={index}>{mic.label}</option>
+              )
+            })}
+          </select>
+        </div>
       </div>
       <p className="read-the-docs">
         Click on the Vite and React logos to learn more
