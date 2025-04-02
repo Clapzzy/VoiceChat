@@ -1,6 +1,32 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
+function VolumeSlider({ gainRef }) {
+  if (!gainRef.current) {
+    return
+  }
+  const [voiceChatVolume, setVoiceChatVolume] = useState(1)
+  useEffect(() => {
+    gainRef.current.gain.value = voiceChatVolume
+  }, [voiceChatVolume])
+  return (
+    <>
+      {gainRef.current && (
+        <input
+          className="w-full bg-[#98C1D9] text rounded-md h-4"
+          type='range'
+          defaultValue="1"
+          step="0.01"
+          min="0"
+          max="2"
+          value={voiceChatVolume}
+          onChange={(e) => setVoiceChatVolume(parseFloat(e.target.value))}
+        />
+      )}
+    </>
+
+  )
+}
 function App() {
   const [count, setCount] = useState(0)
   const [mute, setMute] = useState(true)
@@ -11,6 +37,7 @@ function App() {
 
   const microphoneStreamRef = useRef()
   const micNodeRef = useRef()
+
   const [microphoneDevices, setMicrophoneDevices] = useState([])
   const [currentMic, setCurrentMic] = useState()
 
@@ -43,10 +70,9 @@ function App() {
 
     navigator.mediaDevices.getUserMedia({ audio: { deviceId: { ideal: mic.deviceId } }, video: false })
       .then((mediaStream) => {
-        console.log("currently using mic :", mic.label)
         microphoneStreamRef.current = mediaStream
         gainRef.current = audioContextRef.current.createGain(); // Create a volume control node
-        gainRef.current.gain.value = 3; // Set volume to 50%
+        gainRef.current.gain.value = 1; // Set volume to 50%
         micNodeRef.current = audioContextRef.current.createMediaStreamSource(microphoneStreamRef.current)
 
         micNodeRef.current.connect(gainRef.current)
@@ -86,6 +112,7 @@ function App() {
           Edit <code>src/App.jsx</code> and save to test HMR
         </p>
         <div>
+          <VolumeSlider gainRef={gainRef} />
           <select className='w-full h-10 ' value={currentMic} onChange={(event) => setCurrentMic(event.target.value)}>
             {
               microphoneDevices.map((mic, index) => {
