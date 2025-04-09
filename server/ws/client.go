@@ -1,6 +1,8 @@
 package ws
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"log"
 
@@ -24,6 +26,25 @@ type WebSocketClient struct {
 	Conn     *websocket.Conn
 	Send     chan Message
 	ClientId string
+}
+
+func (client *WebSocketClient) GenerateClientId(room *WebSocketsRoom) {
+outer:
+	for {
+		bytesBuffer := make([]byte, 4)
+		rand.Read(bytesBuffer)
+		clientId := base64.RawStdEncoding.EncodeToString(bytesBuffer)
+
+		for _, v := range room.Connections {
+			if v.ClientId == clientId {
+				continue outer
+			}
+		}
+
+		client.ClientId = clientId
+		break
+	}
+	return
 }
 
 func (client *WebSocketClient) ListenForIncomingData(room *WebSocketsRoom) {

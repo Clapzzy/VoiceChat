@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"log"
 	"sync"
 	"time"
 )
@@ -81,9 +82,9 @@ func (room *WebSocketsRoom) SendMessage(message Message) {
 	if message.Data.To != "" {
 		room.Connections[message.Data.To].Send <- message
 		return
-
 	}
-	//TODO : make it so you are able to filter messages to certain people
+
+	///This could be bad at scale
 	for _, v := range room.Connections {
 		v.Send <- message
 	}
@@ -96,6 +97,23 @@ func (room *WebSocketsRoom) AddClient(client *WebSocketClient) {
 	defer room.Unlock()
 
 	room.Connections[client.ClientId] = client
+
+	return
+}
+
+func CreateRoom(roomId string) {
+	room := new(WebSocketsRoom)
+	room.RoomId = roomId
+	room.MessageChannel = make(chan Message)
+	room.ExitChannel = make(chan *WebSocketClient, 100)
+	room.EnterChannel = make(chan *WebSocketClient, 100)
+	room.Connections = make(map[string]*WebSocketClient)
+	room.HasInitialized = false
+
+	Rooms.Store(roomId, room)
+	log.Println("Created a room called ", roomId)
+
+	go room.Run()
 
 	return
 }

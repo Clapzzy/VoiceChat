@@ -37,15 +37,16 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 	_, found := ws.Rooms.Load(roomId)
 	if !found {
 		//initiate the func for creating a room with room id and the specific user
-		createRoom(string(roomId))
+		ws.CreateRoom(string(roomId))
 	}
 	value, _ := ws.Rooms.Load(roomId)
 
+	wsRoom := value.(*ws.WebSocketsRoom)
+
 	client := new(ws.WebSocketClient)
 	client.Send = make(chan ws.Message, 100)
+	client.GenerateClientId(wsRoom)
 	client.Conn = conn
-
-	wsRoom := value.(*ws.WebSocketsRoom)
 
 	//TODO : should figure out a better way to do this
 
@@ -55,23 +56,6 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 	wsRoom.EnterChannel <- client
 
 	client.ListenForIncomingData(wsRoom)
-}
-
-func createRoom(roomId string) {
-	room := new(ws.WebSocketsRoom)
-	room.RoomId = roomId
-	room.MessageChannel = make(chan ws.Message)
-	room.ExitChannel = make(chan *ws.WebSocketClient, 100)
-	room.EnterChannel = make(chan *ws.WebSocketClient, 100)
-	room.Connections = make(map[string]*ws.WebSocketClient)
-	room.HasInitialized = false
-
-	ws.Rooms.Store(roomId, room)
-	log.Println("Created a room called ", roomId)
-
-	go room.Run()
-
-	return
 }
 
 func main() {
