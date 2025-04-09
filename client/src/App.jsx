@@ -27,6 +27,7 @@ function VolumeSlider({ gainRef }) {
 
   )
 }
+
 function App() {
   const [count, setCount] = useState(0)
   const [mute, setMute] = useState(true)
