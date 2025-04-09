@@ -17,7 +17,7 @@ type Message struct {
 type SignalMessage struct {
 	To        string `json:"to,omitempty"`
 	From      string `json:"from,omitempty"`
-	Type      string `json:"type"`
+	Type      string `json:"type,omitepmty"`
 	Candidate string `json:"candidate,omitempty"`
 	Sdp       string `json:"sdp,omitepmty"`
 }
@@ -29,6 +29,8 @@ type WebSocketClient struct {
 }
 
 func (client *WebSocketClient) GenerateClientId(room *WebSocketsRoom) {
+	room.RLock()
+	defer room.RUnlock()
 outer:
 	for {
 		bytesBuffer := make([]byte, 4)
