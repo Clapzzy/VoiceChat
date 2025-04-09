@@ -6,32 +6,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
+	"voiceChatServer/ws"
 
 	"github.com/gorilla/websocket"
 )
-
-type webSocketClient struct {
-	conn *websocket.Conn
-	send chan message
-}
-
-type webSocketsRoom struct {
-	sync.RWMutex
-	roomId         string
-	hasInitialized bool
-	connections    []*webSocketClient
-	messageChannel chan message
-	exitChannel    chan *webSocketClient
-	enterChannel   chan *webSocketClient
-}
-
-type message struct {
-	data   []byte
-	sender *webSocketClient
-}
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -40,133 +20,6 @@ var upgrader = websocket.Upgrader{
 		return true
 	},
 }
-
-func (client *webSocketClient) listenForIncomingData(room *webSocketsRoom) {
-	//listens for messages from the socket
-	go func() {
-		for {
-			messageType, data, err := client.conn.ReadMessage()
-			if err != nil {
-				room.exitChannel <- client
-				log.Println("There has been an error : ", err)
-				return
-			}
-
-			if messageType == 8 {
-				room.exitChannel <- client
-				client.conn.Close()
-				return
-			}
-
-			message := &message{
-				data:   data,
-				sender: client,
-			}
-
-			room.messageChannel <- *message
-		}
-	}()
-
-	//listens for messages from the room and distributes them
-	go func() {
-		for {
-			select {
-			case message, ok := <-client.send:
-				if !ok {
-					return
-				}
-				if client != message.sender {
-					client.conn.WriteMessage(websocket.TextMessage, message.data)
-				}
-			}
-		}
-	}()
-
-}
-
-func (room *webSocketsRoom) run() {
-	defer func() {
-		room.Lock()
-		for _, client := range room.connections {
-			close(client.send)
-			client.conn.Close()
-		}
-		room.Unlock()
-	}()
-	room.hasInitialized = true
-	for {
-		select {
-		case message, ok := <-room.messageChannel:
-			if !ok {
-				return
-			}
-			go room.sendMessage(message)
-
-		case client, ok := <-room.enterChannel:
-			if !ok {
-				return
-			}
-			go room.addClient(client)
-
-		case client, ok := <-room.exitChannel:
-			if !ok {
-				return
-			}
-			go room.removeClient(client)
-
-		case <-time.After(5 * time.Minute):
-			if len(room.connections) <= 0 {
-				return
-			}
-		}
-	}
-
-}
-func (room *webSocketsRoom) removeClient(client *webSocketClient) {
-	room.Lock()
-	defer room.Unlock()
-
-	for i, webSocketClient := range room.connections {
-		if webSocketClient == client {
-			room.connections = append(room.connections[:i], room.connections[i+1:]...)
-
-			close(webSocketClient.send)
-			break
-		}
-	}
-
-	//remove the room if there arent any participants
-	if len(room.connections) <= 0 {
-		close(room.messageChannel)
-		close(room.enterChannel)
-		close(room.exitChannel)
-		rooms.Delete(room.roomId)
-	}
-
-	return
-}
-
-func (room *webSocketsRoom) sendMessage(message message) {
-	room.RLock()
-
-	for _, v := range room.connections {
-		v.send <- message
-	}
-	room.RUnlock()
-
-	return
-}
-
-func (room *webSocketsRoom) addClient(client *webSocketClient) {
-	room.Lock()
-	defer room.Unlock()
-
-	room.connections = append(room.connections, client)
-
-	return
-}
-
-var rooms sync.Map
 
 func handleConnection(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -181,42 +34,42 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 		log.Println("There has been an error :", err)
 		return
 	}
-	_, found := rooms.Load(roomId)
+	_, found := ws.Rooms.Load(roomId)
 	if !found {
 		//initiate the func for creating a room with room id and the specific user
 		createRoom(string(roomId))
 	}
-	value, _ := rooms.Load(roomId)
+	value, _ := ws.Rooms.Load(roomId)
 
-	client := new(webSocketClient)
-	client.send = make(chan message, 100)
-	client.conn = conn
+	client := new(ws.WebSocketClient)
+	client.Send = make(chan ws.Message, 100)
+	client.Conn = conn
 
-	wsRoom := value.(*webSocketsRoom)
+	wsRoom := value.(*ws.WebSocketsRoom)
 
 	//TODO : should figure out a better way to do this
 
-	for !wsRoom.hasInitialized {
+	for !wsRoom.HasInitialized {
 		time.Sleep(30 * time.Millisecond)
 	}
-	wsRoom.enterChannel <- client
+	wsRoom.EnterChannel <- client
 
-	client.listenForIncomingData(wsRoom)
+	client.ListenForIncomingData(wsRoom)
 }
 
 func createRoom(roomId string) {
-	room := new(webSocketsRoom)
-	room.roomId = roomId
-	room.messageChannel = make(chan message)
-	room.exitChannel = make(chan *webSocketClient, 100)
-	room.enterChannel = make(chan *webSocketClient, 100)
-	room.connections = make([]*webSocketClient, 0)
-	room.hasInitialized = false
+	room := new(ws.WebSocketsRoom)
+	room.RoomId = roomId
+	room.MessageChannel = make(chan ws.Message)
+	room.ExitChannel = make(chan *ws.WebSocketClient, 100)
+	room.EnterChannel = make(chan *ws.WebSocketClient, 100)
+	room.Connections = make(map[string]*ws.WebSocketClient)
+	room.HasInitialized = false
 
-	rooms.Store(roomId, room)
+	ws.Rooms.Store(roomId, room)
 	log.Println("Created a room called ", roomId)
 
-	go room.run()
+	go room.Run()
 
 	return
 }
