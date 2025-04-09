@@ -48,6 +48,8 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 	client.GenerateClientId(wsRoom)
 	client.Conn = conn
 
+	conn.WriteMessage(websocket.TextMessage, []byte(client.ClientId))
+
 	//TODO : should figure out a better way to do this
 
 	for !wsRoom.HasInitialized {
