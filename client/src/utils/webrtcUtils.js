@@ -1,3 +1,23 @@
+async function handleMessage(message, peerConnection) {
+  try {
+    switch (message.type) {
+      case 'offer':
+        await handleOffer(message, peerConnection)
+        break
+      case 'answer':
+        await handleAnswer(message, peerConnection)
+        break
+      case 'candidate':
+        await handleCandidate(message, peerConnection)
+        break
+      default:
+        console.warn("Unknown message type: ", message.type)
+    }
+  } catch (error) {
+    console.error("I got an error :", error)
+  }
+}
+
 export const creatPeerConnection = () => {
   const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
   return new RTCPeerConnection(config)
@@ -14,14 +34,19 @@ export const addStreamToPeer = (peerConnection, streamRef) => {
 export const setupWebSocket = (wsUrl, roomId, handleMessage) => {
   const webSocket = new WebSocket(`${wsUrl}`)
 
-  webSocket.onopen = () => {
+  webSocket.addEventListener("open", () => {
     webSocket.send(roomId)
+
+    webSocket.addEventListener("message", (event) => {
+      const userId = JSON.parse(event.data)
+    }, { once: true })
+
   }
+  )
 
   webSocket.onmessage = (event) => {
     const message = JSON.parse(event.data)
     handleMessage(message)
-
   }
 
   return webSocket
@@ -55,26 +80,6 @@ export const setupIceCandidateHandler = (peerConnection, webSocket, clientId, cl
 export const setupRemoteStreamHandler = (peerConnection, serRemoteStream) => {
   peerConnection.ontrack = (event) => {
     serRemoteStream(event.streams[0])
-  }
-}
-
-const handleMessage = async (message, peerConnection) => {
-  try {
-    switch (message.type) {
-      case 'offer':
-        await handleOffer(message, peerConnection)
-        break
-      case 'answer':
-        await handleAnswer(message, peerConnection)
-        break
-      case 'candidate':
-        await handleCandidate(message, peerConnection)
-        break
-      default:
-        console.warn("Unknown message type: ", message.type)
-    }
-  } catch (error) {
-    console.error("I got an error :", error)
   }
 }
 
