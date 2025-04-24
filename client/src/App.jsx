@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
+import { createPeerOffer, setupWebSocket } from './utils/webrtcUtils';
+
+const roomId = 1;
+const wsUrl = "http://localhost:8080/ws"
 
 function VolumeSlider({ gainRef }) {
   if (!gainRef.current) {
@@ -36,6 +40,11 @@ function App() {
 
   const gainRef = useRef()
 
+  const webSocketRoom = useRef()
+  const userId = useRef()
+  const peerConnection = useRef()
+  const [peerRoom, setPeerRoom] = useState()
+
   const microphoneStreamRef = useRef()
   const micNodeRef = useRef()
 
@@ -59,6 +68,13 @@ function App() {
     return () => {
       audioContextRef.current.close()
     }
+  }, [])
+
+  useEffect(() => {
+    const [webSocketRefrence, userIdRefrence] = setupWebSocket(wsUrl, roomId)
+    webSocketRoom.current = webSocketRefrence
+    userId.current = userIdRefrence
+    peerConnection.current = createPeerOffer()
   }, [])
 
   useEffect(() => {

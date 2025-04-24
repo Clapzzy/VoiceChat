@@ -31,25 +31,31 @@ export const addStreamToPeer = (peerConnection, streamRef) => {
   }
 }
 
-export const setupWebSocket = (wsUrl, roomId, handleMessage) => {
+export const setupWebSocket = async (wsUrl, roomId) => {
   const webSocket = new WebSocket(`${wsUrl}`)
+  let resolveId
+  let idPromise = new Promise((res) => resolveId = res)
 
   webSocket.addEventListener("open", () => {
     webSocket.send(roomId)
 
     webSocket.addEventListener("message", (event) => {
       const userId = JSON.parse(event.data)
+      resolveId(userId)
+
+      webSocket.addEventListener("message", (event) => {
+        const message = JSON.parse(event.data)
+        handleMessage(message)
+      })
+
     }, { once: true })
 
   }
   )
 
-  webSocket.onmessage = (event) => {
-    const message = JSON.parse(event.data)
-    handleMessage(message)
-  }
+  const userId = await idPromise
 
-  return webSocket
+  return [webSocket, userId]
 }
 
 export const createPeerOffer = async (peerConnection, webSocket, clientId, clientToSendTo) => {
@@ -105,5 +111,14 @@ const handleAnswer = async (message, peerConnection) => {
     type: 'answer',
     sdp: message.sdp
   }))
+}
+
+const handleCandidate = async (message, peerConnection) => {
+  try {
+    const candidate = JSON.parse(message.candidate)
+    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+  } catch (error) {
+    console.error("Got an error adding Ice candidate: ", error)
+  }
 }
 
