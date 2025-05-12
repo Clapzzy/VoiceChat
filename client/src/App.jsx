@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
-import { createPeerOffer, setupWebSocket, creatPeerConnection, setupIceCandidateHandler } from './utils/webrtcUtils';
+import { createPeerOffer, setupWebSocket, creatPeerConnection, setupIceCandidateHandler, addStreamToPeer, setupRemoteStreamHandler, initializePeerConnection } from './utils/webrtcUtils';
 
 const roomId = 1;
 const wsUrl = "http://localhost:8080/ws"
@@ -44,6 +44,7 @@ function App() {
   const userId = useRef()
   const peerRef = useRef()
   const [peerRoom, setPeerRoom] = useState()
+  const [remoteStreams, setRemoteStreams] = useState()
   const [idAwaiter, setIdAwaiter] = useState()
 
   const microphoneStreamRef = useRef()
@@ -60,57 +61,20 @@ function App() {
   //when adding a user
   useEffect(() => {
     if (!idAwaiter) return
-
-    const newConnection = creatPeerConnection()
-    newConnection.getSenders().find(predicate)
-
-    setupIceCandidateHandler(
-      newConnection,
-      webSocketRoom.current,
-      idAwaiter
-    )
-
-    setPeerRoom(prev => ({
-      ...prev,
-      [idAwaiter]: newConnection
-    }))
-
-    createPeerOffer(
-      newConnection,
-      webSocketRoom.current,
-      idAwaiter
-    )
+    initializePeerConnection(setRemoteStreams, idAwaiter, peerRef, setPeerRoom, webSocketRoom.current, microphoneStreamRef)
 
   }, [idAwaiter])
 
   //initilizatoin function that makes peers for each of the ids given back and also gets the websocket
   useEffect(() => {
-    const [webSocket, userIds] = setupWebSocket(wsUrl, roomId, setIdAwaiter, peerRef)
+    const [webSocket, userIds] = setupWebSocket(wsUrl, roomId, setIdAwaiter, peerRef, setRemoteStreams, setPeerRoom, microphoneStreamRef)
     webSocketRoom.current = webSocket
     userId.current = userIds[0]
 
     for (let i = 1; i < userIds.length; i++) {
-      const newConnection = creatPeerConnection()
-
-      setupIceCandidateHandler(
-        newConnection,
-        webSocketRoom.current,
-        userIds[i]
-      )
-
-      setPeerRoom(prev => ({
-        ...prev,
-        [userIds[i]]: newConnection
-      }))
-
-      createPeerOffer(
-        newConnection,
-        webSocketRoom.current,
-        userIds[i]
-      )
-
+      initializePeerConnection(setRemoteStreams, userIds[i], peerRef, setPeerRoom, webSocketRoom.current, microphoneStreamRef)
     }
-  }, [setIdAwaiter])
+  }, [setIdAwaiter, setPeerRoom, setRemoteStreams])
 
   useEffect(() => {
     audioContextRef.current = new AudioContext()
@@ -128,6 +92,8 @@ function App() {
 
     return () => {
       audioContextRef.current.close()
+      Object.values(peerRef.current).forEach(pc => pc.close())
+      microphoneStreamRef.current?.getTracks().forEach(t => t.stop())
     }
   }, [])
 
@@ -163,6 +129,7 @@ function App() {
       if (sender) {
         sender.replaceTrack(microphoneStreamRef.current.getAudioTracks()[0])
       }
+
     })
   }, [currentMic])
 

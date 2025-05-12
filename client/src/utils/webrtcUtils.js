@@ -1,11 +1,12 @@
-async function handleMessage(message, peerRef, webSocket, idAwaiter) {
+async function handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteStreams, setPeerRoom, microphoneStreamRef) {
   try {
     switch (message.type) {
       case 'id':
         idAwaiter(message.id)
         break
       case 'offer':
-        await handleOffer(message, peerRef, webSocket)
+        //mrazq prop drilling
+        await handleOffer(message, peerRef, webSocket, setRemoteStreams, setPeerRoom, microphoneStreamRef)
         break
       case 'answer':
         await handleAnswer(message, peerRef)
@@ -27,14 +28,19 @@ export const creatPeerConnection = () => {
 }
 
 export const addStreamToPeer = (peerConnection, streamRef) => {
-  if (streamRef.current) {
-    streamRef.current.getTracks().forEach(track => {
-      peerConnection.addTrack(track, streamRef.current)
-    })
+  const sender = peerConnection.getSenders().find(s => s.track?.kind === 'audio')
+
+  if (sender && streamRef.current) {
+    sender.replaceTrack(streamRef.current.getAudioTracks()[0])
+
+  } else if (!sender && streamRef.current) {
+
+    peerConnection.addTrack(streamRef.current.getAudioTracks()[0],
+      streamRef.current)
   }
 }
 
-export const setupWebSocket = async (wsUrl, roomId, idAwaiter, peerRef) => {
+export const setupWebSocket = async (wsUrl, roomId, idAwaiter, peerRef, setRemoteStreams, setPeerRoom, microphoneStreamRef) => {
   const webSocket = new WebSocket(`${wsUrl}`)
   let resolveId
   let idPromise = new Promise((res) => resolveId = res)
@@ -48,7 +54,7 @@ export const setupWebSocket = async (wsUrl, roomId, idAwaiter, peerRef) => {
 
       webSocket.addEventListener("message", (event) => {
         const message = JSON.parse(event.data)
-        handleMessage(message, peerRef, webSocket, idAwaiter)
+        handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteStreams, setPeerRoom, microphoneStreamRef)
       })
 
     }, { once: true })
@@ -82,15 +88,55 @@ export const setupIceCandidateHandler = (peerConnection, webSocket, clientToSend
       }))
     }
   }
-}
-
-export const setupRemoteStreamHandler = (peerConnection, serRemoteStream) => {
-  peerConnection.ontrack = (event) => {
-    serRemoteStream(event.streams[0])
+  peerConnection.oniceconnectionstatechange = () => {
+    if (peerConnection.iceConnectionState === 'failed') {
+      peerConnection.restartIce()
+    }
   }
 }
 
-const handleOffer = async (offer, peerRef, webSocket) => {
+export const setupRemoteStreamHandler = (peerConnection, setRemoteStream) => {
+  peerConnection.ontrack = (event) => {
+    setRemoteStream(event.streams[0])
+  }
+}
+
+export const initializePeerConnection = (setRemoteStreams, userId, peerRef, setPeerRoom, webSocketRoom, microphoneStreamRef) => {
+
+  if (peerRef.current[userId]) return
+
+  const newConnection = creatPeerConnection()
+
+  addStreamToPeer(newConnection, microphoneStreamRef.current)
+
+  setupRemoteStreamHandler(newConnection, (stream) => {
+    setRemoteStreams(prev => ({ ...prev, [userId]: stream }))
+  })
+
+  setupIceCandidateHandler(
+    newConnection,
+    webSocketRoom,
+    userId
+  )
+
+  setPeerRoom(prev => ({
+    ...prev,
+    [userId]: newConnection
+  }))
+
+  createPeerOffer(
+    newConnection,
+    webSocketRoom,
+    userId
+  )
+
+  addStreamToPeer(newConnection, microphoneStreamRef.current)
+
+}
+
+const handleOffer = async (offer, peerRef, webSocket, setRemoteStreams, setPeerRoom, microphoneStreamRef) => {
+
+  initializePeerConnection(setRemoteStreams, offer.from, peerRef, setPeerRoom, webSocket, microphoneStreamRef)
   await peerRef.current[offer.from].setRemoteDescription(new RTCSessionDescription({
     type: 'offer',
     sdp: offer.sdp,
