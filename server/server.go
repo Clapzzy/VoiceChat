@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -48,7 +49,35 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 	client.GenerateClientId(wsRoom)
 	client.Conn = conn
 
-	conn.WriteMessage(websocket.TextMessage, []byte(client.ClientId))
+	//informs all of the client of the id of the client that has just joined.
+	idMessage := ws.SignalMessage{}
+	idMessage.Type = "id"
+	idMessage.Id = client.ClientId
+	idSignalmessage := ws.Message{}
+	idSignalmessage.Sender = client
+	idSignalmessage.Data = idMessage
+
+	wsRoom.MessageChannel <- idSignalmessage
+
+	var userIdsInRoom []string
+	userIdsInRoom = append(userIdsInRoom, client.ClientId)
+
+	//give all of the ids to the user that has just joined
+	//could be bad if 2 ppl join at the same time
+	wsRoom.RLock()
+
+	for userId := range wsRoom.Connections {
+		userIdsInRoom = append(userIdsInRoom, userId)
+	}
+
+	idBytes, err := json.Marshal(userIdsInRoom)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	wsRoom.RUnlock()
+
+	conn.WriteMessage(websocket.TextMessage, idBytes)
 
 	//TODO : should figure out a better way to do this
 

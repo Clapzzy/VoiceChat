@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
-import { createPeerOffer, setupWebSocket } from './utils/webrtcUtils';
+import { createPeerOffer, setupWebSocket, creatPeerConnection, setupIceCandidateHandler } from './utils/webrtcUtils';
 
 const roomId = 1;
 const wsUrl = "http://localhost:8080/ws"
@@ -42,14 +42,75 @@ function App() {
 
   const webSocketRoom = useRef()
   const userId = useRef()
-  const peerConnection = useRef()
+  const peerRef = useRef()
   const [peerRoom, setPeerRoom] = useState()
+  const [idAwaiter, setIdAwaiter] = useState()
 
   const microphoneStreamRef = useRef()
   const micNodeRef = useRef()
 
   const [microphoneDevices, setMicrophoneDevices] = useState([])
   const [currentMic, setCurrentMic] = useState()
+
+  //updating peerRef when a new peer is added
+  useEffect(() => {
+    peerRef.current = peerRoom
+  }, [peerRoom])
+
+  //when adding a user
+  useEffect(() => {
+    if (!idAwaiter) return
+
+    const newConnection = creatPeerConnection()
+    newConnection.getSenders().find(predicate)
+
+    setupIceCandidateHandler(
+      newConnection,
+      webSocketRoom.current,
+      idAwaiter
+    )
+
+    setPeerRoom(prev => ({
+      ...prev,
+      [idAwaiter]: newConnection
+    }))
+
+    createPeerOffer(
+      newConnection,
+      webSocketRoom.current,
+      idAwaiter
+    )
+
+  }, [idAwaiter])
+
+  //initilizatoin function that makes peers for each of the ids given back and also gets the websocket
+  useEffect(() => {
+    const [webSocket, userIds] = setupWebSocket(wsUrl, roomId, setIdAwaiter, peerRef)
+    webSocketRoom.current = webSocket
+    userId.current = userIds[0]
+
+    for (let i = 1; i < userIds.length; i++) {
+      const newConnection = creatPeerConnection()
+
+      setupIceCandidateHandler(
+        newConnection,
+        webSocketRoom.current,
+        userIds[i]
+      )
+
+      setPeerRoom(prev => ({
+        ...prev,
+        [userIds[i]]: newConnection
+      }))
+
+      createPeerOffer(
+        newConnection,
+        webSocketRoom.current,
+        userIds[i]
+      )
+
+    }
+  }, [setIdAwaiter])
 
   useEffect(() => {
     audioContextRef.current = new AudioContext()
@@ -68,13 +129,6 @@ function App() {
     return () => {
       audioContextRef.current.close()
     }
-  }, [])
-
-  useEffect(() => {
-    const [webSocketRefrence, userIdRefrence] = setupWebSocket(wsUrl, roomId)
-    webSocketRoom.current = webSocketRefrence
-    userId.current = userIdRefrence
-    peerConnection.current = createPeerOffer()
   }, [])
 
   useEffect(() => {
@@ -97,10 +151,19 @@ function App() {
 
         if (!mute) audioContextRef.current.resume()
 
+
+
       })
       .catch((err) => {
         console.log("Got an error :", err)
       })
+
+    Object.values(peerRoom).forEach(peerConnection => {
+      const sender = peerConnection.getSenders.find(s => s.track.kind == 'audio')
+      if (sender) {
+        sender.replaceTrack(microphoneStreamRef.current.getAudioTracks()[0])
+      }
+    })
   }, [currentMic])
 
   useEffect(() => {

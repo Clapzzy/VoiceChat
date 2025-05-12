@@ -20,6 +20,7 @@ type SignalMessage struct {
 	Type      string `json:"type,omitepmty"`
 	Candidate string `json:"candidate,omitempty"`
 	Sdp       string `json:"sdp,omitepmty"`
+	Id        string `json:"id,omitempty"`
 }
 
 type WebSocketClient struct {
@@ -68,6 +69,7 @@ func (client *WebSocketClient) ListenForIncomingData(room *WebSocketsRoom) {
 
 			signalMessage := SignalMessage{}
 			json.Unmarshal(data, &signalMessage)
+			signalMessage.From = client.ClientId
 
 			message := &Message{
 				Data:   signalMessage,
@@ -86,6 +88,7 @@ func (client *WebSocketClient) ListenForIncomingData(room *WebSocketsRoom) {
 				if !ok {
 					return
 				}
+
 				if client != message.Sender {
 					data, err := json.Marshal(message.Data)
 					//TODO: Make this have a better way to handle errors
