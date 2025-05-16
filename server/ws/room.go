@@ -64,6 +64,17 @@ func (room *WebSocketsRoom) RemoveClient(client *WebSocketClient) {
 	room.Connections[client.ClientId].Conn.Close()
 	delete(room.Connections, client.ClientId)
 
+	//moze da ima problem kato zatvorq send channel i sled tova pratq suobshtenie prez MessageChannel
+	idMessage := SignalMessage{}
+	idMessage.Type = "leave"
+	idMessage.From = client.ClientId
+	leaveMessage := Message{}
+	leaveMessage.Sender = client
+	leaveMessage.Data = idMessage
+	log.Println("removed a user with id : ", client.ClientId)
+
+	room.MessageChannel <- leaveMessage
+
 	//remove the room if there arent any participants
 	if len(room.Connections) <= 0 {
 		close(room.MessageChannel)
@@ -84,7 +95,6 @@ func (room *WebSocketsRoom) SendMessage(message Message) {
 		return
 	}
 
-	///This could be bad at scale
 	for _, v := range room.Connections {
 		v.Send <- message
 	}

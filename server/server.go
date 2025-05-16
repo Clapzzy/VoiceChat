@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -56,6 +57,7 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 	idSignalmessage := ws.Message{}
 	idSignalmessage.Sender = client
 	idSignalmessage.Data = idMessage
+	fmt.Println("created a user with id :", client.ClientId)
 
 	wsRoom.MessageChannel <- idSignalmessage
 

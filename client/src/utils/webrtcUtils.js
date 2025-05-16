@@ -1,12 +1,14 @@
-async function handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteStreams, setPeerRoom, microphoneStreamRef) {
+async function handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef) {
   try {
     switch (message.type) {
       case 'id':
-        idAwaiter(message.id)
+        handleNewIds([message.id], idAwaiter, peerRef)
+        break
+      case 'leave':
         break
       case 'offer':
         //mrazq prop drilling
-        await handleOffer(message, peerRef, webSocket, setRemoteStreams, setPeerRoom, microphoneStreamRef)
+        await handleOffer(message, peerRef, webSocket, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef)
         break
       case 'answer':
         await handleAnswer(message, peerRef)
@@ -26,21 +28,30 @@ export const creatPeerConnection = () => {
   const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
   return new RTCPeerConnection(config)
 }
+export const handleNewIds = (newIds, setIdAwaiter, peerRef) => {
+  setIdAwaiter(prev => [
+    ...prev,
+    ...newIds.filter(id =>
+      !prev.includes(id) && !peerRef.current[id]
+    )
+  ]);
+};
 
-export const addStreamToPeer = (peerConnection, streamRef) => {
+
+export const addStreamToPeer = (peerConnection, stream) => {
   const sender = peerConnection.getSenders().find(s => s.track?.kind === 'audio')
 
-  if (sender && streamRef.current) {
-    sender.replaceTrack(streamRef.current.getAudioTracks()[0])
+  if (sender && stream.current) {
+    sender.replaceTrack(stream.current.getAudioTracks()[0])
 
-  } else if (!sender && streamRef.current) {
+  } else if (!sender && stream.current) {
 
-    peerConnection.addTrack(streamRef.current.getAudioTracks()[0],
-      streamRef.current)
+    peerConnection.addTrack(stream.current.getAudioTracks()[0],
+      stream.current)
   }
 }
 
-export const setupWebSocket = async (wsUrl, roomId, idAwaiter, peerRef, setRemoteStreams, setPeerRoom, microphoneStreamRef) => {
+export const setupWebSocket = async (wsUrl, roomId, idAwaiter, peerRef, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef) => {
   const webSocket = new WebSocket(`${wsUrl}`)
   let resolveId
   let idPromise = new Promise((res) => resolveId = res)
@@ -49,12 +60,15 @@ export const setupWebSocket = async (wsUrl, roomId, idAwaiter, peerRef, setRemot
     webSocket.send(roomId)
 
     webSocket.addEventListener("message", (event) => {
+      if (webSocket.readyState !== WebSocket.OPEN) return
       const userIds = JSON.parse(event.data)
-      resolveId(userIds)
+      resolveId(userIds[0])
+      userIds.shift()
+      handleNewIds(userIds, idAwaiter, peerRef)
 
       webSocket.addEventListener("message", (event) => {
         const message = JSON.parse(event.data)
-        handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteStreams, setPeerRoom, microphoneStreamRef)
+        handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef)
       })
 
     }, { once: true })
@@ -68,14 +82,22 @@ export const setupWebSocket = async (wsUrl, roomId, idAwaiter, peerRef, setRemot
 }
 
 export const createPeerOffer = async (peerConnection, webSocket, clientToSendTo) => {
-  const offer = await peerConnection.createOffer()
-  await peerConnection.setLocalDescription(offer)
+  try {
+    if (peerConnection.signalingState !== 'stable') {
+      console.warn("Cannot create offer in current state: ", peerConnection.signalingState)
+      return
+    }
+    const offer = await peerConnection.createOffer()
+    await peerConnection.setLocalDescription(offer)
 
-  webSocket.send(JSON.stringify({
-    type: 'offer',
-    sdp: offer.sdp,
-    to: clientToSendTo
-  }))
+    webSocket.send(JSON.stringify({
+      type: 'offer',
+      sdp: offer.sdp,
+      to: clientToSendTo
+    }))
+  } catch (error) {
+    console.error("Offer creating failed :", error.message)
+  }
 }
 
 export const setupIceCandidateHandler = (peerConnection, webSocket, clientToSendTo) => {
@@ -101,18 +123,36 @@ export const setupRemoteStreamHandler = (peerConnection, setRemoteStream) => {
   }
 }
 
-export const initializePeerConnection = (setRemoteStreams, userId, peerRef, setPeerRoom, webSocketRoom, microphoneStreamRef) => {
+export const initializePeerConnection = (setRemoteStreams, userId, peerRef, setPeerRoom, webSocketRoom, microphoneStreamRef, audioContextRef) => {
 
-  if (peerRef.current[userId]) return
+  if (peerRef?.current?.[userId]) return
 
+  console.log("creating a peer")
   const newConnection = creatPeerConnection()
 
-  addStreamToPeer(newConnection, microphoneStreamRef.current)
+  addStreamToPeer(newConnection, microphoneStreamRef)
+
 
   setupRemoteStreamHandler(newConnection, (stream) => {
-    setRemoteStreams(prev => ({ ...prev, [userId]: stream }))
-  })
+    setRemoteStreams(prev => {
+      const source = audioContextRef.current.createMediaStreamSource(stream)
+      let gainNode
+      if (audioContextRef.current.state !== 'closed') {
+        gainNode = audioContextRef.current.createGain();
+      }
 
+      gainNode.gain.value = 1
+
+      source.connect(gainNode)
+      gainNode.connect(audioContextRef.current.destination)
+      return ({
+        ...prev, [userId]: {
+          stream: stream,
+          nodes: {}
+        }
+      })
+    })
+  })
   setupIceCandidateHandler(
     newConnection,
     webSocketRoom,
@@ -130,41 +170,70 @@ export const initializePeerConnection = (setRemoteStreams, userId, peerRef, setP
     userId
   )
 
-  addStreamToPeer(newConnection, microphoneStreamRef.current)
+  addStreamToPeer(newConnection, microphoneStreamRef)
 
 }
 
 const handleOffer = async (offer, peerRef, webSocket, setRemoteStreams, setPeerRoom, microphoneStreamRef) => {
 
-  initializePeerConnection(setRemoteStreams, offer.from, peerRef, setPeerRoom, webSocket, microphoneStreamRef)
-  await peerRef.current[offer.from].setRemoteDescription(new RTCSessionDescription({
-    type: 'offer',
-    sdp: offer.sdp,
-  }))
+  if (!peerRef.current[offer.from]) {
+    initializePeerConnection(setRemoteStreams, offer.from, peerRef, setPeerRoom, webSocket, microphoneStreamRef)
+  }
+  const peer = peerRef.current[offer.from]
 
-  const answer = await peerRef.current[offer.from].createAnswer()
-  await peerRef.current[offer.from].setLocalDescription(answer)
+  try {
 
-  webSocket.send(JSON.stringify({
-    type: 'answer',
-    sdp: answer.sdp,
-    to: offer.from
-  }))
+    await peer.setRemoteDescription(new RTCSessionDescription({
+      type: 'offer',
+      sdp: offer.sdp,
+    }))
+
+    const answer = await peer.createAnswer()
+    await peer.setLocalDescription(answer)
+
+    webSocket.send(JSON.stringify({
+      type: 'answer',
+      sdp: answer.sdp,
+      to: offer.from
+    }))
+  } catch (error) {
+    console.error("Offer handling failed: ", error.message)
+  }
 }
 
 const handleAnswer = async (message, peerRef) => {
-  await peerRef.current[message.from].setRemoteDescription(new RTCSessionDescription({
-    type: 'answer',
-    sdp: message.sdp
-  }))
+  const peer = peerRef.current[message.from]
+  if (!peer || peer.signalingState !== 'have-local-offer') {
+    console.warn("Peer not in a state for answer")
+    return
+  }
+  try {
+    await peerRef.current[message.from].setRemoteDescription(new RTCSessionDescription({
+      type: 'answer',
+      sdp: message.sdp
+    }))
+  } catch (error) {
+    console.error("Falied ot set answer: ", error.message)
+  }
 }
 
 const handleCandidate = async (message, peerRef) => {
   try {
-    const candidate = JSON.parse(message.candidate)
-    await peerRef.current[message.from].addIceCandidate(new RTCIceCandidate(candidate))
+    let candidate
+    if (typeof message.candidate === 'string') {
+      candidate = JSON.parse(message.candidate)
+    } else {
+      candidate = message.candidate
+    }
+    if (candidate && peerRef.current[message.from]) {
+      await peerRef.current[message.from].addIceCandidate(new RTCIceCandidate(candidate))
+    }
+
   } catch (error) {
-    console.error("Got an error adding Ice candidate: ", error)
+    console.error("ICE Candidate error: ", {
+      error: error.message,
+      recieved: message.candidate
+    })
   }
 }
 

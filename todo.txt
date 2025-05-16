@@ -1,0 +1,8 @@
+=== a way to indicate to the other users that one of the peers has left or the connection has been terminated somehow.
+=== ui
+=== in the frontend a way to show the users in a voicechat without having to join it.
+=== messaging feature(using websockets with the same principle)
+---> new message type for giving messages
+=== a way to indicate who is speaking(green bar or something similar)
+=== volume slider that pops up when you right click a user
+=== a way to mute peers

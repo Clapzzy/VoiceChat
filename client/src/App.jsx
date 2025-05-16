@@ -41,11 +41,14 @@ function App() {
   const gainRef = useRef()
 
   const webSocketRoom = useRef()
+  const isInitilizing = useRef(false)
   const userId = useRef()
-  const peerRef = useRef()
+  const peerRef = useRef({})
   const [peerRoom, setPeerRoom] = useState()
   const [remoteStreams, setRemoteStreams] = useState()
-  const [idAwaiter, setIdAwaiter] = useState()
+
+  const [idAwaiter, setIdAwaiter] = useState([])
+  const processingRef = useRef(false)
 
   const microphoneStreamRef = useRef()
   const micNodeRef = useRef()
@@ -53,26 +56,77 @@ function App() {
   const [microphoneDevices, setMicrophoneDevices] = useState([])
   const [currentMic, setCurrentMic] = useState()
 
-  //updating peerRef when a new peer is added
   useEffect(() => {
     peerRef.current = peerRoom
   }, [peerRoom])
 
   //when adding a user
   useEffect(() => {
-    if (!idAwaiter) return
-    initializePeerConnection(setRemoteStreams, idAwaiter, peerRef, setPeerRoom, webSocketRoom.current, microphoneStreamRef)
+    if (!idAwaiter || idAwaiter.length === 0 || processingRef.current) return
+    const processNextId = async () => {
+      processingRef.current = true
+      const successfullyProcessed = []
+
+      const queuedIds = [...idAwaiter]
+      while (queuedIds.length > 0) {
+        const currentId = queuedIds[0]
+        try {
+          initializePeerConnection(setRemoteStreams, currentId, peerRef, setPeerRoom, webSocketRoom.current, microphoneStreamRef, audioContextRef)
+          successfullyProcessed.push(currentId)
+        } catch (error) {
+          console.error(`Failed to initialize a peer : ${currentId} : `, error)
+        }
+      }
+      setIdAwaiter(prev => prev.filter(id => !successfullyProcessed.includes(id)))
+    }
 
   }, [idAwaiter])
 
-  //initilizatoin function that makes peers for each of the ids given back and also gets the websocket
   useEffect(() => {
-    const [webSocket, userIds] = setupWebSocket(wsUrl, roomId, setIdAwaiter, peerRef, setRemoteStreams, setPeerRoom, microphoneStreamRef)
-    webSocketRoom.current = webSocket
-    userId.current = userIds[0]
+    const initFunc = async () => {
+      if (webSocketRoom.current?.readyState === WebSocket.OPEN) return
 
-    for (let i = 1; i < userIds.length; i++) {
-      initializePeerConnection(setRemoteStreams, userIds[i], peerRef, setPeerRoom, webSocketRoom.current, microphoneStreamRef)
+      if (isInitilizing.current) return;
+      isInitilizing.current = true
+
+      try {
+        if (webSocketRoom.current) {
+          webSocketRoom.current.close()
+          await new Promise(resolve => {
+            webSocketRoom.current.onclose = resolve
+            setTimeout(resolve, 100)
+          })
+        }
+        const [webSocket, userIdGiven] = await setupWebSocket(wsUrl, roomId, setIdAwaiter, peerRef, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef)
+        webSocketRoom.current = webSocket
+        userId.current = userIdGiven
+
+
+        if (webSocket.readyState !== WebSocket.OPEN) {
+          throw new Error("Connection failed")
+        }
+
+      } finally {
+        isInitilizing.current = false
+      }
+
+
+    }
+
+    initFunc()
+    return () => {
+      webSocketRoom.current?.close()
+      if (peerRef.current) {
+        Object.values(peerRef.current).forEach(peer => {
+          peer.close()
+          setPeerRoom(prev => {
+            const newPeers = { ...prev };
+            delete newPeers[userId];
+            return newPeers;
+          });
+        })
+      }
+
     }
   }, [setIdAwaiter, setPeerRoom, setRemoteStreams])
 
@@ -92,10 +146,9 @@ function App() {
 
     return () => {
       audioContextRef.current.close()
-      Object.values(peerRef.current).forEach(pc => pc.close())
       microphoneStreamRef.current?.getTracks().forEach(t => t.stop())
     }
-  }, [])
+  }, [peerRef])
 
   useEffect(() => {
     let mic = microphoneDevices[currentMic];
@@ -108,8 +161,11 @@ function App() {
     navigator.mediaDevices.getUserMedia({ audio: { deviceId: { ideal: mic.deviceId } }, video: false })
       .then((mediaStream) => {
         microphoneStreamRef.current = mediaStream
-        gainRef.current = audioContextRef.current.createGain(); // Create a volume control node
-        gainRef.current.gain.value = 1; // Set volume to 50%
+        if (audioContextRef.current.state !== 'closed') {
+          gainRef.current = audioContextRef.current.createGain();
+        }
+
+        gainRef.current.gain.value = 1;
         micNodeRef.current = audioContextRef.current.createMediaStreamSource(microphoneStreamRef.current)
 
         micNodeRef.current.connect(gainRef.current)
@@ -124,13 +180,15 @@ function App() {
         console.log("Got an error :", err)
       })
 
-    Object.values(peerRoom).forEach(peerConnection => {
-      const sender = peerConnection.getSenders.find(s => s.track.kind == 'audio')
-      if (sender) {
-        sender.replaceTrack(microphoneStreamRef.current.getAudioTracks()[0])
-      }
+    if (peerRoom) {
+      Object.values(peerRoom).forEach(peerConnection => {
+        const sender = peerConnection.getSenders().find(s => s.track.kind == 'audio')
+        if (sender) {
+          sender.replaceTrack(microphoneStreamRef.current.getAudioTracks()[0])
+        }
 
-    })
+      })
+    }
   }, [currentMic])
 
   useEffect(() => {
