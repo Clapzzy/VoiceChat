@@ -33,12 +33,6 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 	_, roomIdByte, err := conn.ReadMessage()
 	roomId := string(roomIdByte)
 	if err != nil {
-		log.Println("There has been an error :", err)
-		return
-	}
-	_, found := ws.Rooms.Load(roomId)
-	if !found {
-		//initiate the func for creating a room with room id and the specific user
 		ws.CreateRoom(string(roomId))
 	}
 	value, _ := ws.Rooms.Load(roomId)
