@@ -5,9 +5,40 @@ async function handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteSt
         handleNewIds([message.id], idAwaiter, peerRef)
         break
       case 'leave':
+        let streamInfoToClean
+
+        setRemoteStreams(prev => {
+          streamInfoToClean = prev[message.from]
+          const newStreams = { ...prev }
+          delete newStreams[message.from]
+          return newStreams
+        })
+
+        if (streamInfoToClean) {
+          streamInfoToClean.forEach(node => {
+            node?.disconnect()
+          })
+        }
+
+        peerRef.current[message.from].getSenders().forEach(sender => {
+          if (sender.track && sender.track.kind === 'audio') {
+            sender.track.stop()
+            peerRef.current[message.from].removeTrack(sender);
+          }
+        })
+
+        peerRef.current[message.from].close()
+        if (setPeerRoom) {
+          setPeerRoom(prev => {
+            const newPeers = { ...prev };
+            delete newPeers[userId];
+            return newPeers;
+          });
+        }
+
         break
       case 'offer':
-        //mrazq prop drilling
+        //malumno
         await handleOffer(message, peerRef, webSocket, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef)
         break
       case 'answer':
@@ -134,21 +165,22 @@ export const initializePeerConnection = (setRemoteStreams, userId, peerRef, setP
 
 
   setupRemoteStreamHandler(newConnection, (stream) => {
+    const source = audioContextRef.current.createMediaStreamSource(stream)
+    let gainNode
+    if (audioContextRef.current.state !== 'closed') {
+      gainNode = audioContextRef.current.createGain();
+    }
+
+    gainNode.gain.value = 1
+
+    source.connect(gainNode)
+    gainNode.connect(audioContextRef.current.destination)
+
     setRemoteStreams(prev => {
-      const source = audioContextRef.current.createMediaStreamSource(stream)
-      let gainNode
-      if (audioContextRef.current.state !== 'closed') {
-        gainNode = audioContextRef.current.createGain();
-      }
-
-      gainNode.gain.value = 1
-
-      source.connect(gainNode)
-      gainNode.connect(audioContextRef.current.destination)
       return ({
         ...prev, [userId]: {
           stream: stream,
-          nodes: {}
+          nodes: { source, gainNode }
         }
       })
     })
