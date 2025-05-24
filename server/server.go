@@ -35,7 +35,8 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		ws.CreateRoom(string(roomId))
 	}
-	value, _ := ws.Rooms.Load(roomId)
+	value, isHere := ws.Rooms.Load(roomId)
+	log.Println("I have found room with roodId :", isHere)
 
 	wsRoom := value.(*ws.WebSocketsRoom)
 
