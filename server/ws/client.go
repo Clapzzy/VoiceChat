@@ -21,9 +21,12 @@ type SignalMessage struct {
 	Candidate string `json:"candidate,omitempty"`
 	Sdp       string `json:"sdp,omitepmty"`
 	Id        string `json:"id,omitempty"`
+	InitData  []any  `json:"initDate,omitepmty"`
 }
 
 type WebSocketClient struct {
+	PfpNum   int
+	Username string
 	Conn     *websocket.Conn
 	Send     chan Message
 	ClientId string

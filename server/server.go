@@ -15,6 +15,18 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type ConnectionInitResponse struct {
+	RoomId   string `json:"roomId"`
+	PfpNum   int    `json:"pfpNum"`
+	Username string `json:"username"`
+}
+
+type UserInfoInRoom struct {
+	PfpNum   int    `json:"pfpNum"`
+	Username string `json:"username,omitempty"`
+	UserId   string `json:"userId,omitempty"`
+}
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
@@ -31,7 +43,10 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, roomIdByte, err := conn.ReadMessage()
-	roomId := string(roomIdByte)
+	//TODO: throw an error if roomIdByte doesnt contain some of its elements
+	connectionInitMessage := ConnectionInitResponse{}
+	json.Unmarshal(roomIdByte, &connectionInitMessage)
+	roomId := connectionInitMessage.RoomId
 
 	if err != nil {
 		log.Println("There has been an error :", err)
@@ -48,6 +63,8 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 	wsRoom := value.(*ws.WebSocketsRoom)
 
 	client := new(ws.WebSocketClient)
+	client.PfpNum = connectionInitMessage.PfpNum
+	client.Username = connectionInitMessage.Username
 	client.Send = make(chan ws.Message, 100)
 	client.GenerateClientId(wsRoom)
 	client.Conn = conn
@@ -56,25 +73,35 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 	idMessage := ws.SignalMessage{}
 	idMessage.Type = "id"
 	idMessage.Id = client.ClientId
+	//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	idMessage.InitData = []any{connectionInitMessage.Username, connectionInitMessage.PfpNum}
+	//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	idSignalmessage := ws.Message{}
 	idSignalmessage.Sender = client
 	idSignalmessage.Data = idMessage
 	fmt.Println("created a user with id :", client.ClientId)
 
+	//TODO: pass pointers and not copies of the structs to MessageChannel and Send
 	wsRoom.MessageChannel <- idSignalmessage
 
-	var userIdsInRoom []string
-	userIdsInRoom = append(userIdsInRoom, client.ClientId)
+	var userInfoInRoom []UserInfoInRoom
+	userInfoInRoom = append(userInfoInRoom, UserInfoInRoom{
+		UserId: client.ClientId,
+	})
 
 	//give all of the ids to the user that has just joined
 	//could be bad if 2 ppl join at the same time
 	wsRoom.RLock()
 
-	for userId := range wsRoom.Connections {
-		userIdsInRoom = append(userIdsInRoom, userId)
+	for userId, connection := range wsRoom.Connections {
+		userInfoInRoom = append(userInfoInRoom, UserInfoInRoom{
+			UserId:   userId,
+			PfpNum:   connection.PfpNum,
+			Username: connection.Username,
+		})
 	}
 
-	idBytes, err := json.Marshal(userIdsInRoom)
+	idBytes, err := json.Marshal(userInfoInRoom)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -83,8 +110,7 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 
 	conn.WriteMessage(websocket.TextMessage, idBytes)
 
-	//TODO : should figure out a better way to do this
-
+	//maybe not the best way to do this
 	for !wsRoom.HasInitialized {
 		time.Sleep(30 * time.Millisecond)
 	}
