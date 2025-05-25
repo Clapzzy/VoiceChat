@@ -19,7 +19,6 @@ export function LoginScreen({ setUserInfo }) {
     const urls = Object.values(images)
 
     setImageUrls(urls)
-    console.log(urls[5])
     setPfp(Math.floor(Math.random() * urls.length))
   }, [])
 
@@ -45,9 +44,9 @@ export function LoginScreen({ setUserInfo }) {
   return (
     <>
       <div className='w-screen h-screen'>
-        <div className='m-6 flex flex-row gap-3 items-center'>
-          <span className="material-symbols-outlined" style={{ color: "#7AB8C7", fontSize: 44 }}>adaptive_audio_mic</span>
-          <p className='text-2xl pb-1'>QuickChat</p>
+        <div className='m-6 flex flex-row gap-3 items-center select-none'>
+          <span className="material-symbols-outlined select-none" style={{ color: "#7AB8C7", fontSize: 44 }}>adaptive_audio_mic</span>
+          <p className='text-2xl pb-1 select-none'>QuickChat</p>
         </div>
         <div className='w-full h-full flex justify-center items-center'>
           <div className='w-[640px] p-9 bg-[#cae3e9] rounded-xl shadow-xl flex flex-col items-center '>

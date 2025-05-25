@@ -3,7 +3,22 @@ import './App.css'
 import { setupWebSocket, initializePeerConnection } from './utils/webrtcUtils';
 import { useSetUpAudioMic } from './utils/userControls';
 import { UserControls } from './components/userControls';
+import { MessageChannelGroup } from './components/messageChannels';
 
+const channelInfo = [
+  {
+    name: "General Chat 1",
+    id: 1
+  },
+  {
+    name: "Gaming chat",
+    id: 2
+  },
+  {
+    name: "Random chat",
+    id: 3
+  }
+]
 
 function VolumeSlider({ gainRef }) {
   if (!gainRef.current) {
@@ -32,9 +47,20 @@ function VolumeSlider({ gainRef }) {
 }
 
 export function WebrtcChat({ userInfo }) {
-  const [currentChatSelected, setCurrentChat] = useState(null)
-  const [currentVoiceSelected, setVoiceSelected] = useState(null)
+  const [currentChat, setCurrentChat] = useState("General Chat 1")
+  const [currentVoiceChat, setVoiceChat] = useState(null)
+  const [imageUrls, setImageUrls] = useState(null)
 
+  useEffect(() => {
+    const images = import.meta.glob('./assets/pfp*.png', {
+      eager: true,
+      query: '?url',
+      import: 'default'
+    });
+    const urls = Object.values(images)
+
+    setImageUrls(urls)
+  }, [])
   const [audioContextRef, microphoneStreamRef, gainRef, [setCurrentMic, microphoneDevices]] = useSetUpAudioMic()
 
   return (
@@ -43,7 +69,7 @@ export function WebrtcChat({ userInfo }) {
         {/* sidebar */}
         <div className='h-full w-80 ' aria-hidden="true"></div>
         <div className='fixed h-full w-80 bg-[#F4F6F7] flex flex-col'>
-          <div className='mt-3 mb-2 mx-6 flex flex-row items-center gap-3'>
+          <div className='mt-3 mb-2 mx-6 flex flex-row items-center gap-3 select-none'>
             <span className="material-symbols-outlined" style={{ color: "#7AB8C7", fontSize: 38 }}>adaptive_audio_mic</span>
             <p className='text-xl pb-1'>QuickChat</p>
           </div>
@@ -51,12 +77,7 @@ export function WebrtcChat({ userInfo }) {
           <div className='px-4 py-2 flex flex-col justify-between grow basis-auto '>
             <div>
               {/* Message channels */}
-              <div className=' w-full flex flex-col gap-3'>
-                <p className=' text-[15]'>Text Channels</p>
-                <div className='px-2 flex flex-col gap-2' >
-                </div>
-                <div className='w-full h-[1px] bg-[#C7C7C7]' />
-              </div>
+              <MessageChannelGroup currentChannel={currentChat} setCurrentChannel={setCurrentChat} channelInfo={channelInfo} />
               {/* Voice channels */}
               <div className=' w-full flex flex-col gap-3 mt-3'>
                 <p className=' text-[15]'>Voice Channels</p>
@@ -76,7 +97,7 @@ export function WebrtcChat({ userInfo }) {
                     <div className='gap-2 pl-3 my-2'>
                       <div className='flex flex-row gap-2 items-center'>
                         <img
-                          src='./assets/pfp 1.png'
+                          src={imageUrls?.[1]}
                           alt='profile picture'
                           className='w-[24px] h-[24px]'
                         />
@@ -89,7 +110,7 @@ export function WebrtcChat({ userInfo }) {
               </div>
             </div>
             {/* User Controls */}
-            <UserControls profilePictureUrl={"./assets/pfp 1.png"} gainNodeRef={gainRef} audioContextRef={audioContextRef} />
+            <UserControls profilePictureUrl={imageUrls?.[2]} gainNodeRef={gainRef} audioContextRef={audioContextRef} />
           </div>
         </div>
         {/* chat function */}
@@ -98,9 +119,9 @@ export function WebrtcChat({ userInfo }) {
           <div className='flex flex-col '>
             {/* chat lable */}
             <div>
-              <div className='mt-4 mb-2 mx-6 flex flex-row items-center gap-3'>
+              <div className='mt-4 mb-2 mx-6 flex flex-row items-center gap-3 select-none'>
                 <span className="material-symbols-outlined" style={{ color: "#7AB8C7", fontSize: 28 }}>event</span>
-                <p className='text-[16px] pt-[1px]'>General Chat</p>
+                <p className='text-[16px] pt-[1px]'>{currentChat}</p>
               </div>
               <div className='w-full h-[1px] mt-[14px] bg-[#E5E5E5]'></div>
             </div>

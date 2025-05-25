@@ -34,18 +34,19 @@ export function useSetUpAudioMic() {
 
   // sets up mic and its gain node
   useEffect(() => {
-    let mic = microphoneDevices[currentMic];
-    let micNode;
+    if (!microphoneDevices?.[currentMic]) return
+    let mic = microphoneDevices[currentMic]
+    let micNode
     if (!mic) return
 
     if (microphoneStreamRef.current) {
-      microphoneStreamRef.current.getTracks().forEach(track => track.stop());
+      microphoneStreamRef.current.getTracks().forEach(track => track.stop())
     }
 
     navigator.mediaDevices.getUserMedia({ audio: { deviceId: { ideal: mic.deviceId } }, video: false })
       .then((mediaStream) => {
         if (audioContextRef.current.state !== 'closed') {
-          gainRef.current = audioContextRef.current.createGain();
+          gainRef.current = audioContextRef.current.createGain()
         }
 
         const destinationNode = audioContextRef.current.createMediaStreamDestination()
