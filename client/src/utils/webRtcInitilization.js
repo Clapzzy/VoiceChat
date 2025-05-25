@@ -3,7 +3,7 @@ import { useState } from "react"
 
 const wsUrl = "http://martinkurtev.com:8080/ws"
 
-export function useSetUpWebrtc(roomId, audioContextRef, microphoneStreamRef) {
+export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStreamRef) {
   if (roomId) return
 
   //internal only (private)
@@ -18,13 +18,14 @@ export function useSetUpWebrtc(roomId, audioContextRef, microphoneStreamRef) {
   //used as a less advaced golang channel to wait for new peers
   const [idAwaiter, setIdAwaiter] = useState(null)
   const [micStream, setMicStream] = useState()
+  //isnt used anywhere
+  const userId = useRef()
 
   // public
   //
   //holds the audioStream and the gainNode for each peer
   const [remoteStream, setRemoteStreams] = useState(null)
-  const userId = useRef()
-  //TODO: 1. add leave func in handleMessages 2.Make the backend give the username and pfpNum 3.Make the frontend give the pfpf and the username when connecting
+
   //TODO: 4. Make settings page on the site. 5. Make endpoint that you get the users in a voicechat 6.make the chat function using websockets and some kind of persistent message.
   //TODO: 7. Make a simple auth system(give secret id to each user and check weather the secret id mathches the given to the user when making a request)
 
@@ -41,12 +42,14 @@ export function useSetUpWebrtc(roomId, audioContextRef, microphoneStreamRef) {
 
       const queuedIds = [...idAwaiter]
       while (queuedIds.length > 0) {
-        const currentId = queuedIds[0]
+        const userInfo = queuedIds[0]
+
         try {
-          initializePeerConnection(setRemoteStreams, currentId, peerRef, setPeerRoom, webSocketRoom.current, microphoneStreamRef, audioContextRef)
-          successfullyProcessed.push(currentId)
+          initializePeerConnection(setRemoteStreams, userInfo, peerRef, setPeerRoom, webSocketRoom.current, microphoneStreamRef, audioContextRef)
+          successfullyProcessed.push(userInfo)
+          queuedIds.shift()
         } catch (error) {
-          console.error(`Failed to initialize a peer : ${currentId} : `, error)
+          console.error(`Failed to initialize a peer : ${userInfo} : `, error)
         }
       }
       setIdAwaiter(prev => prev.filter(id => !successfullyProcessed.includes(id)))
@@ -54,19 +57,6 @@ export function useSetUpWebrtc(roomId, audioContextRef, microphoneStreamRef) {
     processNextId()
 
   }, [idAwaiter])
-
-  useEffect(() => {
-    let lastStream = microphoneStreamRef.current;
-
-    const checkStream = () => {
-      if (microphoneStreamRef.current !== lastStream) {
-        lastStream = microphoneStreamRef.current;
-      }
-    };
-
-    const interval = setInterval(checkStream, 1000); // Adjust interval as needed
-    return () => clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     if (peerRoom) {
@@ -83,7 +73,7 @@ export function useSetUpWebrtc(roomId, audioContextRef, microphoneStreamRef) {
           peerConnection.getSenders().forEach(sender => {
             if (sender.track && sender.track.kind === 'audio') {
               sender.track.stop()
-              peerConnection.removeTrack(sender);
+              peerConnection.removeTrack(sender)
             }
           })
         })
@@ -93,37 +83,55 @@ export function useSetUpWebrtc(roomId, audioContextRef, microphoneStreamRef) {
 
   useEffect(() => {
     //TODO : dont use this
-    let lastStream = microphoneStreamRef.current;
+    let lastStream = microphoneStreamRef.current
 
     const checkStream = () => {
       if (microphoneStreamRef.current !== lastStream) {
-        lastStream = microphoneStreamRef.current;
+        lastStream = microphoneStreamRef.current
         setMicStream(microphoneStreamRef.current)
       }
-    };
+    }
 
-    const interval = setInterval(checkStream, 1000);
+    const interval = setInterval(checkStream, 1000)
 
     return () => {
       clearInterval(interval)
-      webSocketRoom.current?.close()
+      if (webSocketRoom.current) {
+        webSocketRoom.current?.close()
+      }
+
       if (peerRoom) {
-        Object.values(peerRoom).forEach(peer => {
+        Object.entries(peerRoom).forEach(([peerId, peer]) => {
           peer.getSenders().forEach(sender => {
             if (sender.track && sender.track.kind === 'audio') {
               sender.track.stop()
-              peer.removeTrack(sender);
+              peer.removeTrack(sender)
             }
           })
 
           peer.close()
+
           if (setPeerRoom) {
             setPeerRoom(prev => {
-              const newPeers = { ...prev };
-              delete newPeers[userId];
-              return newPeers;
-            });
+              const newPeers = { ...prev }
+              delete newPeers[peerId]
+              return newPeers
+            })
           }
+
+          if (setRemoteStreams) {
+            setRemoteStreams(prev => {
+              const newStreams = { ...prev }
+              delete newStreams[message.from]
+              return newStreams
+            })
+            if (remoteStream[peerId]) {
+              streamInfoToClean.forEach(node => {
+                node?.disconnect()
+              })
+            }
+          }
+
         })
       }
 
@@ -134,7 +142,7 @@ export function useSetUpWebrtc(roomId, audioContextRef, microphoneStreamRef) {
   const initFunc = async () => {
     if (webSocketRoom.current?.readyState === WebSocket.OPEN) return
 
-    if (isInitilizing.current) return;
+    if (isInitilizing.current) return
     isInitilizing.current = true
 
     try {
@@ -145,7 +153,11 @@ export function useSetUpWebrtc(roomId, audioContextRef, microphoneStreamRef) {
           setTimeout(resolve, 100)
         })
       }
-      const [webSocket, userIdGiven] = await setupWebSocket(wsUrl, roomId, setIdAwaiter, peerRef, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef)
+      let objectToSendToWs = {
+        ...userInfo,
+        roomId: roomId
+      }
+      const [webSocket, userIdGiven] = await setupWebSocket(wsUrl, objectToSendToWs, setIdAwaiter, peerRef, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef)
       webSocketRoom.current = webSocket
       userId.current = userIdGiven
 

@@ -55,6 +55,10 @@ async function handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteSt
   }
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export const creatPeerConnection = () => {
   const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
   return new RTCPeerConnection(config)
@@ -67,7 +71,6 @@ export const handleNewIds = (newIds, setIdAwaiter, peerRef) => {
     )
   ]);
 };
-
 
 export const addStreamToPeer = (peerConnection, stream) => {
   const sender = peerConnection.getSenders().find(s => s.track?.kind === 'audio')
@@ -82,13 +85,13 @@ export const addStreamToPeer = (peerConnection, stream) => {
   }
 }
 
-export const setupWebSocket = async (wsUrl, roomId, idAwaiter, peerRef, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef) => {
+export const setupWebSocket = async (wsUrl, initObj, idAwaiter, peerRef, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef) => {
   const webSocket = new WebSocket(`${wsUrl}`)
   let resolveId
   let idPromise = new Promise((res) => resolveId = res)
 
   webSocket.addEventListener("open", () => {
-    webSocket.send(roomId)
+    webSocket.send(initObj)
 
     webSocket.addEventListener("message", (event) => {
       if (webSocket.readyState !== WebSocket.OPEN) return
@@ -154,9 +157,9 @@ export const setupRemoteStreamHandler = (peerConnection, setRemoteStream) => {
   }
 }
 
-export const initializePeerConnection = (setRemoteStreams, userId, peerRef, setPeerRoom, webSocketRoom, microphoneStreamRef, audioContextRef) => {
+export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, setPeerRoom, webSocketRoom, microphoneStreamRef, audioContextRef) => {
 
-  if (peerRef?.current?.[userId]) return
+  if (peerRef?.current?.[userInfo.userId]) return
 
   console.log("creating a peer")
   const newConnection = creatPeerConnection()
@@ -178,7 +181,9 @@ export const initializePeerConnection = (setRemoteStreams, userId, peerRef, setP
 
     setRemoteStreams(prev => {
       return ({
-        ...prev, [userId]: {
+        ...prev, [userInfo.userId]: {
+          username: userInfo.username,
+          pfpNum: userInfo.pfpNum,
           stream: stream,
           nodes: { source, gainNode }
         }
@@ -188,18 +193,18 @@ export const initializePeerConnection = (setRemoteStreams, userId, peerRef, setP
   setupIceCandidateHandler(
     newConnection,
     webSocketRoom,
-    userId
+    userInfo.userId
   )
 
   setPeerRoom(prev => ({
     ...prev,
-    [userId]: newConnection
+    [userInfo.userId]: newConnection
   }))
 
   createPeerOffer(
     newConnection,
     webSocketRoom,
-    userId
+    userInfo.userId
   )
 
   addStreamToPeer(newConnection, microphoneStreamRef)
@@ -207,9 +212,13 @@ export const initializePeerConnection = (setRemoteStreams, userId, peerRef, setP
 }
 
 const handleOffer = async (offer, peerRef, webSocket, setRemoteStreams, setPeerRoom, microphoneStreamRef) => {
-
-  if (!peerRef.current[offer.from]) {
-    initializePeerConnection(setRemoteStreams, offer.from, peerRef, setPeerRoom, webSocket, microphoneStreamRef)
+  let timeWaited = 0
+  while (!peerRef.current[offer.from]) {
+    await sleep(100)
+    timeWaited++
+    if (timeWaited > 50) {
+      console.error("A peer couldnt be created. ID of peer : ", offer.from)
+    }
   }
   const peer = peerRef.current[offer.from]
 
@@ -268,4 +277,3 @@ const handleCandidate = async (message, peerRef) => {
     })
   }
 }
-

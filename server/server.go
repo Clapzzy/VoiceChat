@@ -73,9 +73,7 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 	idMessage := ws.SignalMessage{}
 	idMessage.Type = "id"
 	idMessage.Id = client.ClientId
-	//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	idMessage.InitData = []any{connectionInitMessage.Username, connectionInitMessage.PfpNum}
-	//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	idSignalmessage := ws.Message{}
 	idSignalmessage.Sender = client
 	idSignalmessage.Data = idMessage
