@@ -40,6 +40,7 @@ func giveChannelsParticipants(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 		PfpNum   int    `json:"pfpNum"`
 	}
+	log.Println(r.URL)
 	channelIds := r.URL.Query()["channel_ids"]
 	log.Println(channelIds)
 
