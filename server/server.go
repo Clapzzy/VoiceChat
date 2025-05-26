@@ -37,8 +37,8 @@ var upgrader = websocket.Upgrader{
 
 func giveChannelsParticipants(w http.ResponseWriter, r *http.Request) {
 	type userInfo struct {
-		username string
-		pfpNum   int
+		Username string `json:"username"`
+		PfpNum   int    `json:"pfpNum"`
 	}
 	channelIds := r.URL.Query()["channel_ids"]
 
@@ -53,10 +53,14 @@ func giveChannelsParticipants(w http.ResponseWriter, r *http.Request) {
 		roomData := value.(*ws.WebSocketsRoom)
 
 		for _, connection := range roomData.Connections {
-			userInfos = append(userInfos, userInfo{username: connection.Username, pfpNum: connection.PfpNum})
+			log.Println(connection.Username, connection.PfpNum)
+			userInfoToAdd := userInfo{Username: connection.Username, PfpNum: connection.PfpNum}
+			log.Println(userInfoToAdd)
+			userInfos = append(userInfos, userInfo{Username: connection.Username, PfpNum: connection.PfpNum})
 		}
 
 		response[v] = userInfos
+		log.Println(response[v])
 	}
 
 	w.Header().Set("Content-Type", "application/json")
