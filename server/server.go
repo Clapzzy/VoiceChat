@@ -35,6 +35,36 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+func giveChannelsParticipants(w http.ResponseWriter, r *http.Request) {
+	type userInfo struct {
+		username string
+		pfpNum   int
+	}
+	channelIds := r.URL.Query()["channel_ids"]
+
+	response := map[string][]userInfo{}
+	for _, v := range channelIds {
+		userInfos := []userInfo{}
+		value, found := ws.Rooms.Load(v)
+		if !found {
+			continue
+		}
+
+		roomData := value.(*ws.WebSocketsRoom)
+
+		for _, connection := range roomData.Connections {
+			userInfos = append(userInfos, userInfo{username: connection.Username, pfpNum: connection.PfpNum})
+		}
+
+		response[v] = userInfos
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+
+}
+
 func handleConnection(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 
@@ -127,6 +157,7 @@ func main() {
 	}
 
 	http.HandleFunc("/ws", handleConnection)
+	http.HandleFunc("/channel", giveChannelsParticipants)
 
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
