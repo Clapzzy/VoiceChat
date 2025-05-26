@@ -8,6 +8,14 @@ export default defineConfig({
   server: {
     allowedHosts: ['martinkurtev.com'],
     host: '0.0.0.0',
-    port: 80
+    port: 80,
+    proxy: {
+      '/api': {
+        target: 'http://martinkurtev.com:8080',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+    },
   }
 })

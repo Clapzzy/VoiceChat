@@ -57,10 +57,6 @@ export function useSetUpAudioMic() {
         gainRef.current.connect(destinationNode)
         microphoneStreamRef.current = destinationNode.stream
 
-        if (!mute) audioContextRef.current.resume()
-
-
-
       })
       .catch((err) => {
         console.log("Got an error :", err)
@@ -82,5 +78,5 @@ export function useSetUpAudioMic() {
   }, [currentMic])
 
 
-  return [audioContextRef, microphoneStreamRef, gainRef, [setCurrentMic, microphoneDevices]]
+  return [audioContextRef, microphoneStreamRef, gainRef, [setCurrentMic, currentMic, microphoneDevices]]
 }

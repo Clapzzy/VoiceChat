@@ -1,10 +1,12 @@
 import { useEffect, useRef } from "react"
 import { useState } from "react"
+import { setupWebSocket } from "./webrtcUtils"
 
-const wsUrl = "http://martinkurtev.com:8080/ws"
+const wsUrl = "http://localhost:8080/ws"
 
 export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStreamRef) {
-  if (roomId) return
+  console.log(roomId)
+  //should just return a bunch of null representing the values that should be ruturned
 
   //internal only (private)
   //
@@ -14,9 +16,9 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
   const peerRef = useRef()
   const isInitilizing = useRef(false)
   //holds the peerConnection for each peer
-  const [peerRoom, setPeerRoom] = useState(null)
+  const [peerRoom, setPeerRoom] = useState({})
   //used as a less advaced golang channel to wait for new peers
-  const [idAwaiter, setIdAwaiter] = useState(null)
+  const [idAwaiter, setIdAwaiter] = useState([])
   const [micStream, setMicStream] = useState()
   //isnt used anywhere
   const userId = useRef()
@@ -24,9 +26,10 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
   // public
   //
   //holds the audioStream and the gainNode for each peer
-  const [remoteStream, setRemoteStreams] = useState(null)
+  const [remoteStream, setRemoteStreams] = useState({})
 
-  //TODO: 4. Make settings page on the site. 5. Make endpoint that you get the users in a voicechat 6.make the chat function using websockets and some kind of persistent message.
+
+  //TODO: 6.make the chat function using websockets and some kind of persistent message.
   //TODO: 7. Make a simple auth system(give secret id to each user and check weather the secret id mathches the given to the user when making a request)
 
   useEffect(() => {
@@ -82,7 +85,9 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
   }, [micStream])
 
   useEffect(() => {
-    //TODO : dont use this
+    const abortController = new AbortController()
+    const { signal } = abortController;
+
     let lastStream = microphoneStreamRef.current
 
     const checkStream = () => {
@@ -92,11 +97,51 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
       }
     }
 
+    //TODO : dont use this
     const interval = setInterval(checkStream, 1000)
 
+    const initFunc = async () => {
+      if (signal.aborted) return
+
+      if (!roomId) return
+      if (webSocketRoom.current?.readyState === WebSocket.OPEN) return
+
+      if (isInitilizing.current) return
+      isInitilizing.current = true
+
+      try {
+        if (webSocketRoom.current) {
+          webSocketRoom.current.close()
+          await new Promise(resolve => {
+            webSocketRoom.current.onclose = resolve
+            setTimeout(resolve, 100)
+          })
+        }
+        let objectToSendToWs = {
+          ...userInfo,
+          roomId: roomId
+        }
+        const [webSocket, userIdGiven] = await setupWebSocket(wsUrl, objectToSendToWs, setIdAwaiter, peerRef, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef)
+        if (signal.aborted) {
+          webSocket.close()
+          return;
+        }
+        webSocketRoom.current = webSocket
+        userId.current = userIdGiven
+
+        if (webSocket.readyState !== WebSocket.OPEN) {
+          throw new Error("Connection failed")
+        }
+
+      } finally {
+        isInitilizing.current = false
+      }
+    }
+    initFunc()
     return () => {
+      abortController.abort()
       clearInterval(interval)
-      if (webSocketRoom.current) {
+      if (webSocketRoom.current?.readyState === WebSocket.OPEN) {
         webSocketRoom.current?.close()
       }
 
@@ -134,41 +179,11 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
 
         })
       }
-
     }
-  }, [])
+  }, [roomId])
 
+  if (!roomId) return [remoteStream]
   //inits webSocket conn
-  const initFunc = async () => {
-    if (webSocketRoom.current?.readyState === WebSocket.OPEN) return
 
-    if (isInitilizing.current) return
-    isInitilizing.current = true
-
-    try {
-      if (webSocketRoom.current) {
-        webSocketRoom.current.close()
-        await new Promise(resolve => {
-          webSocketRoom.current.onclose = resolve
-          setTimeout(resolve, 100)
-        })
-      }
-      let objectToSendToWs = {
-        ...userInfo,
-        roomId: roomId
-      }
-      const [webSocket, userIdGiven] = await setupWebSocket(wsUrl, objectToSendToWs, setIdAwaiter, peerRef, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef)
-      webSocketRoom.current = webSocket
-      userId.current = userIdGiven
-
-      if (webSocket.readyState !== WebSocket.OPEN) {
-        throw new Error("Connection failed")
-      }
-
-    } finally {
-      isInitilizing.current = false
-    }
-  }
-
-  initFunc()
+  return [remoteStream]
 }

@@ -3,24 +3,20 @@ import { useEffect, useRef, useState } from 'react'
 import { motion } from "motion/react"
 import 'material-symbols'
 import './App.css'
+import { usePfpUrls } from './utils/usePfpUrls'
 
 export function LoginScreen({ setUserInfo }) {
+  const imageUrls = usePfpUrls()
   const [currentPfp, setPfp] = useState(0)
-  const [imageUrls, setImageUrls] = useState(null)
   const inputRef = useRef()
   const [rotation, setRotation] = useState(0);
 
   useEffect(() => {
-    const images = import.meta.glob('./assets/pfp*.png', {
-      eager: true,
-      query: '?url',
-      import: 'default'
-    });
-    const urls = Object.values(images)
-
-    setImageUrls(urls)
-    setPfp(Math.floor(Math.random() * urls.length))
-  }, [])
+    if (imageUrls && imageUrls.length > 0) {
+      const randomIndex = Math.floor(Math.random() * imageUrls.length)
+      setPfp(randomIndex)
+    }
+  }, [imageUrls])
 
   const refreshPfp = () => {
     const randomIndex = Math.floor(Math.random() * imageUrls.length)
@@ -37,9 +33,9 @@ export function LoginScreen({ setUserInfo }) {
       userName: inputRef.current.value,
       pfpNum: currentPfp
     })
-    console.log("Neshot")
   }
 
+  if (!imageUrls) return null
 
   return (
     <>

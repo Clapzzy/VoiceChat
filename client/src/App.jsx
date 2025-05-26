@@ -6,7 +6,7 @@ import { WebrtcChat } from './actualApp'
 
 function App() {
   const [userInfo, setUserInfo] = useState({
-    userName: "Clappzy",
+    username: "Clappzy",
     pfpNum: 1
   })
   return (

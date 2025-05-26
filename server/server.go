@@ -80,6 +80,7 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, roomIdByte, err := conn.ReadMessage()
+	log.Println("Initializing connection")
 	//TODO: throw an error if roomIdByte doesnt contain some of its elements
 	connectionInitMessage := ConnectionInitResponse{}
 	json.Unmarshal(roomIdByte, &connectionInitMessage)

@@ -1,60 +1,3 @@
-async function handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef) {
-  try {
-    switch (message.type) {
-      case 'id':
-        handleNewIds([message.id], idAwaiter, peerRef)
-        break
-      case 'leave':
-        let streamInfoToClean
-
-        setRemoteStreams(prev => {
-          streamInfoToClean = prev[message.from]
-          const newStreams = { ...prev }
-          delete newStreams[message.from]
-          return newStreams
-        })
-
-        if (streamInfoToClean) {
-          streamInfoToClean.forEach(node => {
-            node?.disconnect()
-          })
-        }
-
-        peerRef.current[message.from].getSenders().forEach(sender => {
-          if (sender.track && sender.track.kind === 'audio') {
-            sender.track.stop()
-            peerRef.current[message.from].removeTrack(sender);
-          }
-        })
-
-        peerRef.current[message.from].close()
-        if (setPeerRoom) {
-          setPeerRoom(prev => {
-            const newPeers = { ...prev };
-            delete newPeers[userId];
-            return newPeers;
-          });
-        }
-
-        break
-      case 'offer':
-        //malumno
-        await handleOffer(message, peerRef, webSocket, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef)
-        break
-      case 'answer':
-        await handleAnswer(message, peerRef)
-        break
-      case 'candidate':
-        await handleCandidate(message, peerRef)
-        break
-      default:
-        console.warn("Unknown message type: ", message.type)
-    }
-  } catch (error) {
-    console.error("I got an error :", error)
-  }
-}
-
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -275,5 +218,62 @@ const handleCandidate = async (message, peerRef) => {
       error: error.message,
       recieved: message.candidate
     })
+  }
+}
+
+async function handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef) {
+  try {
+    switch (message.type) {
+      case 'id':
+        handleNewIds([message.id], idAwaiter, peerRef)
+        break
+      case 'leave':
+        let streamInfoToClean
+
+        setRemoteStreams(prev => {
+          streamInfoToClean = prev[message.from]
+          const newStreams = { ...prev }
+          delete newStreams[message.from]
+          return newStreams
+        })
+
+        if (streamInfoToClean) {
+          streamInfoToClean.forEach(node => {
+            node?.disconnect()
+          })
+        }
+
+        peerRef.current[message.from].getSenders().forEach(sender => {
+          if (sender.track && sender.track.kind === 'audio') {
+            sender.track.stop()
+            peerRef.current[message.from].removeTrack(sender);
+          }
+        })
+
+        peerRef.current[message.from].close()
+        if (setPeerRoom) {
+          setPeerRoom(prev => {
+            const newPeers = { ...prev };
+            delete newPeers[userId];
+            return newPeers;
+          });
+        }
+
+        break
+      case 'offer':
+        //malumno
+        await handleOffer(message, peerRef, webSocket, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef)
+        break
+      case 'answer':
+        await handleAnswer(message, peerRef)
+        break
+      case 'candidate':
+        await handleCandidate(message, peerRef)
+        break
+      default:
+        console.warn("Unknown message type: ", message.type)
+    }
+  } catch (error) {
+    console.error("I got an error :", error)
   }
 }
