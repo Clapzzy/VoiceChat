@@ -41,9 +41,11 @@ func giveChannelsParticipants(w http.ResponseWriter, r *http.Request) {
 		PfpNum   int    `json:"pfpNum"`
 	}
 	channelIds := r.URL.Query()["channel_ids"]
+	log.Println(channelIds)
 
 	response := map[string][]userInfo{}
 	for _, v := range channelIds {
+		log.Println(v)
 		userInfos := []userInfo{}
 		value, found := ws.Rooms.Load(v)
 		if !found {
