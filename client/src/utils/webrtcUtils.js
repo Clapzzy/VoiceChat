@@ -88,7 +88,9 @@ export const createPeerOffer = async (peerConnection, webSocket, clientToSendTo)
 
 export const setupIceCandidateHandler = (peerConnection, webSocket, clientToSendTo) => {
   peerConnection.onicecandidate = (event) => {
-    if (event.candidate) {
+    if (event.candidate &&
+      peerConnection.iceGatheringState === 'complete' &&
+      peerConnection.signalingState === 'stable') {
       webSocket.send(JSON.stringify({
         type: 'candidate',
         candidate: event.candidate,
@@ -110,7 +112,6 @@ export const setupRemoteStreamHandler = (peerConnection, setRemoteStream) => {
 }
 
 export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, setPeerRoom, webSocketRoom, microphoneStreamRef, audioContextRef) => {
-
   if (peerRef?.current?.[userInfo.userId]) return
 
   console.log("creating a peer with the id : ", userInfo.userId)
@@ -118,6 +119,13 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
 
   addStreamToPeer(newConnection, microphoneStreamRef)
 
+  newConnection.onsignalingstatechange = () => {
+    console.log('Sign`ling state : ', newConnection.signalingState)
+  }
+
+  newConnection.oniceconnectionstatechange = () => {
+    console.log('Ice connection state : ', newConnection.iceConnectionState)
+  }
 
   setupRemoteStreamHandler(newConnection, (stream) => {
     const source = audioContextRef.current.createMediaStreamSource(stream)
@@ -160,13 +168,12 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
     userInfo.userId
   )
 
-  addStreamToPeer(newConnection, microphoneStreamRef)
-
 }
 
 const handleOffer = async (offer, peerRef, webSocket, setRemoteStreams, setPeerRoom, microphoneStreamRef) => {
   let timeWaited = 0
   console.log("Handling offer from : ", offer.from)
+
   while (!peerRef.current[offer.from]) {
     await sleep(100)
     console.error("A peer couldnt be created. ID of peer : ", offer.from)
@@ -175,21 +182,42 @@ const handleOffer = async (offer, peerRef, webSocket, setRemoteStreams, setPeerR
       return
     }
   }
+
   const peer = peerRef.current[offer.from]
 
   try {
+
+    if (peer.signalingState !== 'stable') {
+      console.warn('Cannot handle offer in state : ', peer.signalingState)
+      return
+    }
 
     await peer.setRemoteDescription(new RTCSessionDescription({
       type: 'offer',
       sdp: offer.sdp,
     }))
-
     const answer = await peer.createAnswer()
+
+    const waitForICEGathering = new Promise(resolve => {
+      if (peer.iceGatheringState === 'complete') {
+        resolve()
+      } else {
+        const checkState = () => {
+          if (peer.iceGatheringState === 'complete') {
+            peer.removeEventListener('icegatheringstatechange', checkState)
+            resolve()
+          }
+        }
+        peer.addEventListener('icegatheringstatechange', checkState)
+      }
+    })
+
     await peer.setLocalDescription(answer)
+    await waitForICEGathering
 
     webSocket.send(JSON.stringify({
       type: 'answer',
-      sdp: answer.sdp,
+      sdp: peer.localDescription.sdp,
       to: offer.from
     }))
   } catch (error) {
@@ -198,26 +226,23 @@ const handleOffer = async (offer, peerRef, webSocket, setRemoteStreams, setPeerR
 }
 
 const handleAnswer = async (message, peerRef) => {
-  let retries = 0;
-  const maxRetries = 1000;
-  const retryInterval = 100;
-
-  while (!peerRef.current[message.from] && retries < maxRetries) {
-    await new Promise(resolve => setTimeout(resolve, retryInterval));
-    retries++;
-  }
 
   const peer = peerRef.current[message.from]
-  if (!peer || peer.signalingState !== 'have-local-offer') {
-    console.log(peer.signalingState)
-    console.warn("Peer not in a state for answer")
+
+  if (!peer) {
+    console.warn("Peer connection not found for answer")
     return
   }
   try {
+    if (peer.signalingState !== 'have-local-offer') {
+      console.warn('Unexprected sginaling state : ', peer.signalingState)
+      return;
+    }
     await peerRef.current[message.from].setRemoteDescription(new RTCSessionDescription({
       type: 'answer',
       sdp: message.sdp
     }))
+    console.log("Answer successfully set")
   } catch (error) {
     console.error("Falied ot set answer: ", error.message)
   }
