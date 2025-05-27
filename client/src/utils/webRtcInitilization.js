@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react"
 import { useState } from "react"
 import { initializePeerConnection, setupWebSocket } from "./webrtcUtils"
 
-const wsUrl = "http://martinkurtev.com:8080/ws"
+const wsUrl = "wss://martinkurtev.com/ws";
 
 export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStreamRef) {
   console.log(roomId)
