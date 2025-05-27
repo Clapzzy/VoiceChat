@@ -8,7 +8,7 @@ export default defineConfig({
   server: {
     allowedHosts: ['martinkurtev.com'],
     host: '0.0.0.0',
-    port: 80,
+    port: 5173,
     proxy: {
       '/api': {
         target: 'http://martinkurtev.com:8080',
