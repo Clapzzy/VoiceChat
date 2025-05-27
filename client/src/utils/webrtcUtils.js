@@ -6,14 +6,16 @@ export const creatPeerConnection = () => {
   const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
   return new RTCPeerConnection(config)
 }
+
 export const handleNewIds = (newIds, setIdAwaiter, peerRef) => {
   setIdAwaiter(prev => [
     ...prev,
     ...newIds.filter(id =>
-      !prev.includes(id) && !peerRef.current[id]
+      !prev.some(existing => existing.userId === id.userId) &&
+      !peerRef.current[id.userId]
     )
-  ]);
-};
+  ])
+}
 
 export const addStreamToPeer = (peerConnection, stream) => {
   const sender = peerConnection.getSenders().find(s => s.track?.kind === 'audio')
