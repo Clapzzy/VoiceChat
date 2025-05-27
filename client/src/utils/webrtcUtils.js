@@ -159,7 +159,7 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
 
 const handleOffer = async (offer, peerRef, webSocket, setRemoteStreams, setPeerRoom, microphoneStreamRef) => {
   let timeWaited = 0
-  console.log("Making an offer")
+  console.log("Handling offer from : ", offer.from)
   while (!peerRef.current[offer.from]) {
     await sleep(100)
     console.error("A peer couldnt be created. ID of peer : ", offer.from)
