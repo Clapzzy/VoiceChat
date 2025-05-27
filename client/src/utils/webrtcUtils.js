@@ -276,7 +276,7 @@ async function handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteSt
         if (setPeerRoom) {
           setPeerRoom(prev => {
             const newPeers = { ...prev };
-            delete newPeers[userId];
+            delete newPeers[message.from];
             return newPeers;
           });
         }
