@@ -91,7 +91,12 @@ func (room *WebSocketsRoom) SendMessage(message Message) {
 	defer room.RUnlock()
 
 	if message.Data.To != "" {
-		room.Connections[message.Data.To].Send <- message
+    if connection, ok := room.Connections[message.Data.To];ok{
+      client.Send <- message
+    }else{
+      log.Println("Client %s not found, cannot send message.",
+    message.Data.To)
+    }
 		return
 	}
 
