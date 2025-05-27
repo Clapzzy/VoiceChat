@@ -12,11 +12,11 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
   //
   const webSocketRoom = useRef()
   const processingRef = useRef(false)
-  //used as a pointer to the peerRoom
-  const peerRef = useRef()
   const isInitilizing = useRef(false)
   //holds the peerConnection for each peer
   const [peerRoom, setPeerRoom] = useState({})
+  //used as a pointer to the peerRoom
+  const peerRef = useRef(peerRoom)
   //used as a less advaced golang channel to wait for new peers
   const [idAwaiter, setIdAwaiter] = useState([])
   const [micStream, setMicStream] = useState()
@@ -122,7 +122,7 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
           ...userInfo,
           roomId: roomId
         }
-        const [webSocket, userIdGiven] = await setupWebSocket(wsUrl, objectToSendToWs, setIdAwaiter, peerRef, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef)
+        const [webSocket, userIdGiven] = await setupWebSocket(wsUrl, objectToSendToWs, setIdAwaiter, peerRef, setRemoteStreams, setPeerRoom, userId)
         if (signal.aborted) {
           webSocket.close()
           return;
@@ -155,33 +155,26 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
             }
           })
 
+          peer.ontrack = null
+          peer.onicecandidate = null
           peer.close()
 
-          if (setPeerRoom) {
-            setPeerRoom(prev => {
-              const newPeers = { ...prev }
-              delete newPeers[peerId]
-              return newPeers
+          if (remoteStream[peerId]) {
+            streamInfoToClean.forEach(node => {
+              node?.disconnect()
             })
           }
-
-          if (setRemoteStreams) {
-            setRemoteStreams(prev => {
-              const newStreams = { ...prev }
-              delete newStreams[message.from]
-              return newStreams
-            })
-            if (remoteStream[peerId]) {
-              streamInfoToClean.forEach(node => {
-                node?.disconnect()
-              })
-            }
-          }
-
         })
+
+        if (setPeerRoom) {
+          setPeerRoom({})
+        }
+        if (setRemoteStreams) {
+          setRemoteStreams({})
+        }
       }
     }
-  }, [roomId])
+  }, [roomId, userId])
 
   if (!roomId) return [remoteStream]
   //inits webSocket conn

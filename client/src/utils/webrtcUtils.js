@@ -7,12 +7,13 @@ export const creatPeerConnection = () => {
   return new RTCPeerConnection(config)
 }
 
-export const handleNewIds = (newIds, setIdAwaiter, peerRef) => {
+export const handleNewIds = (newIds, setIdAwaiter, peerRef, currentUserId) => {
   setIdAwaiter(prev => [
     ...prev,
     ...newIds.filter(id =>
       !prev.some(existing => existing.userId === id.userId) &&
-      !peerRef.current[id.userId]
+      !peerRef.current[id.userId] &&
+      id.userId !== currentUserId.current
     )
   ])
   setIdAwaiter(prev =>
@@ -37,7 +38,7 @@ export const addStreamToPeer = (peerConnection, stream) => {
   }
 }
 
-export const setupWebSocket = async (wsUrl, initObj, idAwaiter, peerRef, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef) => {
+export const setupWebSocket = async (wsUrl, initObj, idAwaiter, peerRef, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef, currentUserId) => {
   const webSocket = new WebSocket(`${wsUrl}`)
   let resolveId
   let idPromise = new Promise((res) => resolveId = res)
@@ -50,11 +51,11 @@ export const setupWebSocket = async (wsUrl, initObj, idAwaiter, peerRef, setRemo
       const userIds = JSON.parse(event.data)
       resolveId(userIds[0])
       userIds.shift()
-      handleNewIds(userIds, idAwaiter, peerRef)
+      handleNewIds(userIds, idAwaiter, peerRef, currentUserId)
 
       webSocket.addEventListener("message", (event) => {
         const message = JSON.parse(event.data)
-        handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef)
+        handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef, currentUserId)
       })
 
     }, { once: true })
@@ -170,7 +171,7 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
 
 }
 
-const handleOffer = async (offer, peerRef, webSocket, setRemoteStreams, setPeerRoom, microphoneStreamRef) => {
+const handleOffer = async (offer, peerRef, webSocket, currentUserId) => {
   let timeWaited = 0
   console.log("Handling offer from : ", offer.from)
 
@@ -187,8 +188,13 @@ const handleOffer = async (offer, peerRef, webSocket, setRemoteStreams, setPeerR
 
   try {
 
-    if (peer.signalingState !== 'stable') {
+    if (!peer || peer.signalingState !== 'stable') {
       console.warn('Cannot handle offer in state : ', peer.signalingState)
+      return
+    }
+
+    if (offer.from === currentUserId.current) {
+      console.error("Recieved offer from self")
       return
     }
 
@@ -196,7 +202,7 @@ const handleOffer = async (offer, peerRef, webSocket, setRemoteStreams, setPeerR
       type: 'offer',
       sdp: offer.sdp,
     }))
-    const answer = await peer.createAnswer()
+    const answer = await peer.createAnswer({ iceRestart: true });
 
     const waitForICEGathering = new Promise(resolve => {
       if (peer.iceGatheringState === 'complete') {
@@ -222,6 +228,7 @@ const handleOffer = async (offer, peerRef, webSocket, setRemoteStreams, setPeerR
     }))
   } catch (error) {
     console.error("Offer handling failed: ", error.message)
+    //TODO: maybe should remove peer and do some clean up
   }
 }
 
@@ -245,6 +252,9 @@ const handleAnswer = async (message, peerRef) => {
     console.log("Answer successfully set")
   } catch (error) {
     console.error("Falied ot set answer: ", error.message)
+    if (peer.signalingState === 'stable') {
+      peer.restartIce()
+    }
   }
 }
 
@@ -268,11 +278,11 @@ const handleCandidate = async (message, peerRef) => {
   }
 }
 
-async function handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef) {
+async function handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteStreams, setPeerRoom, currentUserId) {
   try {
     switch (message.type) {
       case 'id':
-        handleNewIds([{ userId: message.id, username: message.initDate[0], pfpNum: message.initDate[1] }], idAwaiter, peerRef)
+        handleNewIds([{ userId: message.id, username: message.initDate[0], pfpNum: message.initDate[1] }], idAwaiter, peerRef, currentUserId)
         break
       case 'leave':
         let streamInfoToClean
@@ -309,7 +319,7 @@ async function handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteSt
         break
       case 'offer':
         //malumno
-        await handleOffer(message, peerRef, webSocket, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef)
+        await handleOffer(message, peerRef, webSocket, currentUserId)
         break
       case 'answer':
         await handleAnswer(message, peerRef)
