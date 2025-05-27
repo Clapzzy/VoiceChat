@@ -300,7 +300,7 @@ async function handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteSt
           })
         }
 
-        peerRef.current[message.from].getSenders().forEach(sender => {
+        peerRef.current[message.from]?.getSenders().forEach(sender => {
           if (sender.track && sender.track.kind === 'audio') {
             sender.track.stop()
             peerRef.current[message.from].removeTrack(sender);
