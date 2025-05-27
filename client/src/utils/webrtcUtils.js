@@ -145,6 +145,7 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
     ...prev,
     [userInfo.userId]: newConnection
   }))
+  console.log(newConnection)
 
   createPeerOffer(
     newConnection,
@@ -158,6 +159,7 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
 
 const handleOffer = async (offer, peerRef, webSocket, setRemoteStreams, setPeerRoom, microphoneStreamRef) => {
   let timeWaited = 0
+  console.log("Making an offer")
   while (!peerRef.current[offer.from]) {
     await sleep(100)
     console.error("A peer couldnt be created. ID of peer : ", offer.from)
@@ -190,9 +192,11 @@ const handleOffer = async (offer, peerRef, webSocket, setRemoteStreams, setPeerR
 
 const handleAnswer = async (message, peerRef) => {
   let retries = 0;
+  const maxRetries = 1000;
+  const retryInterval = 100;
 
-  while (!peerRef.current[message.from] && retries < 10) {
-    await new Promise(resolve => setTimeout(resolve, 100));
+  while (!peerRef.current[message.from] && retries < maxRetries) {
+    await new Promise(resolve => setTimeout(resolve, retryInterval));
     retries++;
   }
 
