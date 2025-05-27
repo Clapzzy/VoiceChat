@@ -46,6 +46,7 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
       const queuedIds = [...idAwaiter]
       while (queuedIds.length > 0) {
         const userInfo = queuedIds[0]
+        console.log("userInfo be like : ", userInfo)
 
         try {
           initializePeerConnection(setRemoteStreams, userInfo, peerRef, setPeerRoom, webSocketRoom.current, microphoneStreamRef, audioContextRef)
