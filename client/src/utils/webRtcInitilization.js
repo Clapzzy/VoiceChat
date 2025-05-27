@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react"
 import { useState } from "react"
-import { setupWebSocket } from "./webrtcUtils"
+import { initializePeerConnection, setupWebSocket } from "./webrtcUtils"
 
 const wsUrl = "http://localhost:8080/ws"
 
