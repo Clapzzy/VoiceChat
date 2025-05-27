@@ -106,7 +106,7 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
 
   if (peerRef?.current?.[userInfo.userId]) return
 
-  console.log("creating a peer")
+  console.log("creating a peer with the id : ", userInfo.userId)
   const newConnection = creatPeerConnection()
 
   addStreamToPeer(newConnection, microphoneStreamRef)
