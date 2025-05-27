@@ -240,7 +240,7 @@ async function handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteSt
   try {
     switch (message.type) {
       case 'id':
-        handleNewIds([message.id], idAwaiter, peerRef)
+        handleNewIds({ userId: message.id, username: message.initDate[0], pfpNum: message.initDate[1] }, idAwaiter, peerRef)
         break
       case 'leave':
         let streamInfoToClean
