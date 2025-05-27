@@ -34,7 +34,7 @@ export const setupWebSocket = async (wsUrl, initObj, idAwaiter, peerRef, setRemo
   let idPromise = new Promise((res) => resolveId = res)
 
   webSocket.addEventListener("open", () => {
-    webSocket.send(initObj)
+    webSocket.send(JSON.stringify(initObj))
 
     webSocket.addEventListener("message", (event) => {
       if (webSocket.readyState !== WebSocket.OPEN) return
@@ -158,9 +158,10 @@ const handleOffer = async (offer, peerRef, webSocket, setRemoteStreams, setPeerR
   let timeWaited = 0
   while (!peerRef.current[offer.from]) {
     await sleep(100)
+    console.error("A peer couldnt be created. ID of peer : ", offer.from)
     timeWaited++
     if (timeWaited > 50) {
-      console.error("A peer couldnt be created. ID of peer : ", offer.from)
+      return
     }
   }
   const peer = peerRef.current[offer.from]
@@ -186,8 +187,16 @@ const handleOffer = async (offer, peerRef, webSocket, setRemoteStreams, setPeerR
 }
 
 const handleAnswer = async (message, peerRef) => {
+  let retries = 0;
+
+  while (!peerRef.current[message.from] && retries < 10) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    retries++;
+  }
+
   const peer = peerRef.current[message.from]
   if (!peer || peer.signalingState !== 'have-local-offer') {
+    console.log(peer.signalingState)
     console.warn("Peer not in a state for answer")
     return
   }
