@@ -9,9 +9,20 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+//TODO: maybe make the websocket and chat message structs more generic to be able to be used in both places
 type Message struct {
 	Data   SignalMessage
 	Sender *WebSocketClient
+}
+
+type ChatMessage struct{
+  Data TextMessage
+  Sender *ChatClient
+}
+
+type TextMessage struct{
+  Type string `json:"type"`
+  Message string `json:"message"`
 }
 
 type SignalMessage struct {
@@ -31,6 +42,11 @@ type WebSocketClient struct {
 	Send     chan Message
 	ClientId string
 }
+ type ChatClient struct {
+   PfpNum int
+   Username string
+   Conn *websocket.Conn
+ }
 
 func (client *WebSocketClient) GenerateClientId(room *WebSocketsRoom) {
 	room.RLock()

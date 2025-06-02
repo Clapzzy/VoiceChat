@@ -12,15 +12,26 @@ type WebSocketsRoom struct {
 	HasInitialized bool
 	Connections    map[string]*WebSocketClient
 	MessageChannel chan Message
+  TextMessageChannel chan ChatMessage
 	ExitChannel    chan *WebSocketClient
 	EnterChannel   chan *WebSocketClient
+  Subscribers []*websocket.Conn
+}
+
+type ChatRoom struct {
+  sync.RWMutex
+  RoomId string
+  HasInitialized bool
+  Conncections map[string]*ChatClient
 }
 
 var Rooms sync.Map
+var TextChatRooms sync.Map
 
 func (room *WebSocketsRoom) Run() {
 	defer func() {
 		room.Lock()
+    room.Subscribers = []*websocket.Conn{}
 		for _, client := range room.Connections {
 			close(client.Send)
 			client.Conn.Close()
@@ -56,12 +67,49 @@ func (room *WebSocketsRoom) Run() {
 	}
 
 }
+type ChatRoom struct {
+  sync.RWMutex
+  RoomId string
+  HasInitialized bool
+  Conncections map[string]*ChatClient
+}
+func (room *ChatRoom) RemoveChatParticipant(){
+	room.Lock()
+	defer room.Unlock()
+
+	close(client.Send)
+	client.Close()
+	delete(room.Connections, client.ClientId)
+  //TODO  Make the functions for Chat room
+  //TODO Complete the function handleUpdates
+  //TODO create a map that contains all of the users that are listening and with them the ids of the chats that they are subscribed to so that they can easily be removed
+
+	//moze da ima problem kato zatvorq send channel i sled tova pratq suobshtenie prez MessageChannel
+	idMessage := SignalMessage{}
+	idMessage.Type = "leave"
+	idMessage.From = client.ClientId
+	leaveMessage := Message{}
+	leaveMessage.Sender = client
+	leaveMessage.Data = idMessage
+	log.Println("removed a user with id : ", client.ClientId)
+
+	room.MessageChannel <- leaveMessage
+
+	if len(room.Connections) <= 0 {
+		close(room.MessageChannel)
+		close(room.EnterChannel)
+		close(room.ExitChannel)
+		Rooms.Delete(room.RoomId)
+	}
+
+	return
+}
 func (room *WebSocketsRoom) RemoveClient(client *WebSocketClient) {
 	room.Lock()
 	defer room.Unlock()
 
-	close(room.Connections[client.ClientId].Send)
-	room.Connections[client.ClientId].Conn.Close()
+	close(client.Send)
+	client.Close()
 	delete(room.Connections, client.ClientId)
 
 	//moze da ima problem kato zatvorq send channel i sled tova pratq suobshtenie prez MessageChannel
@@ -75,7 +123,6 @@ func (room *WebSocketsRoom) RemoveClient(client *WebSocketClient) {
 
 	room.MessageChannel <- leaveMessage
 
-	//remove the room if there arent any participants
 	if len(room.Connections) <= 0 {
 		close(room.MessageChannel)
 		close(room.EnterChannel)
@@ -127,6 +174,22 @@ func CreateRoom(roomId string) {
 
 	Rooms.Store(roomId, room)
 	log.Println("Created a room called ", roomId)
+
+	go room.Run()
+
+	return
+}
+
+func CreateChatRoom(roomId string){
+	room := new(WebSocketsRoom)
+	room.RoomId = roomId
+	room.MessageChannel = make(chan Message)
+	room.ExitChannel = make(chan *WebSocketClient, 100)
+	room.EnterChannel = make(chan *WebSocketClient, 100)
+	room.Connections = make(map[string]*WebSocketClient)
+	room.HasInitialized = false
+
+	TextChatRooms.Store(roomId, room)
 
 	go room.Run()
 

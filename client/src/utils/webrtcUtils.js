@@ -13,7 +13,7 @@ export const handleNewIds = (newIds, setIdAwaiter, peerRef, currentUserId) => {
     ...newIds.filter(id =>
       !prev.some(existing => existing.userId === id.userId) &&
       !peerRef.current[id.userId] &&
-      id.userId !== currentUserId.current
+      id.userId !== currentUserId?.current
     )
   ])
   setIdAwaiter(prev =>
@@ -112,11 +112,13 @@ export const setupRemoteStreamHandler = (peerConnection, setRemoteStream) => {
   }
 }
 
-export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, setPeerRoom, webSocketRoom, microphoneStreamRef, audioContextRef) => {
+export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, setPeerRoom, webSocketRoom, microphoneStreamRef, audioContextRef, currentUserId) => {
   if (peerRef?.current?.[userInfo.userId]) return
 
   console.log("creating a peer with the id : ", userInfo.userId)
   const newConnection = creatPeerConnection()
+
+  newConnection.polite = currentUserId.current > userInfo.userId
 
   addStreamToPeer(newConnection, microphoneStreamRef)
 
@@ -128,6 +130,26 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
     console.log('Ice connection state : ', newConnection.iceConnectionState)
   }
 
+  newConnection.oniceconnectionstatechange = () => {
+    if (newConnection.iceConnectionState === 'disconnected' ||
+      newConnection.iceConnectionState === 'failed') {
+      newConnection.restartIce()
+    }
+  }
+
+  newConnection.onnegotiationneeded = async = () => {
+    try {
+      if (!newConnection.polite) {
+        createPeerOffer(
+          newConnection,
+          webSocketRoom,
+          userInfo.userId
+        )
+      }
+    } catch (error) {
+      console.error('Negotiation error: ', error)
+    }
+  }
   setupRemoteStreamHandler(newConnection, (stream) => {
     const source = audioContextRef.current.createMediaStreamSource(stream)
     let gainNode
@@ -163,11 +185,13 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
   }))
   console.log(newConnection)
 
-  createPeerOffer(
-    newConnection,
-    webSocketRoom,
-    userInfo.userId
-  )
+  if (!newConnection.polite) {
+    createPeerOffer(
+      newConnection,
+      webSocketRoom,
+      userInfo.userId
+    )
+  }
 
 }
 
@@ -175,33 +199,36 @@ const handleOffer = async (offer, peerRef, webSocket, currentUserId) => {
   let timeWaited = 0
   console.log("Handling offer from : ", offer.from)
 
-  while (!peerRef.current[offer.from]) {
+  while (!peerRef.current[offer.from] && waitCount > 50) {
     await sleep(100)
-    console.error("A peer couldnt be created. ID of peer : ", offer.from)
     timeWaited++
-    if (timeWaited > 50) {
-      return
-    }
   }
 
-  const peer = peerRef.current[offer.from]
+  const peer = peerRef?.current[offer.from]
 
   try {
 
-    if (!peer || peer.signalingState !== 'stable') {
-      console.warn('Cannot handle offer in state : ', peer.signalingState)
-      return
+    if (peer.signalingState !== 'stable') {
+      if (peer.polite) {
+        console.log("Polite peer. roolback")
+        await Promise.all([
+          peer.setLocalDescription({ type: "rollback" }),
+          peer.setRemoteDescription(new RTCSessionDescription({
+            type: 'offer',
+            sdp: offer.sdp,
+          }))
+        ])
+      } else {
+        console.warn("Impolite peer. Ignoring offer")
+        return
+      }
+    } else {
+      await peer.setRemoteDescription(new RTCSessionDescription({
+        type: 'offer',
+        sdp: offer.sdp,
+      }))
     }
 
-    if (offer.from === currentUserId.current) {
-      console.error("Recieved offer from self")
-      return
-    }
-
-    await peer.setRemoteDescription(new RTCSessionDescription({
-      type: 'offer',
-      sdp: offer.sdp,
-    }))
     const answer = await peer.createAnswer({ iceRestart: true });
 
     const waitForICEGathering = new Promise(resolve => {
@@ -227,8 +254,10 @@ const handleOffer = async (offer, peerRef, webSocket, currentUserId) => {
       to: offer.from
     }))
   } catch (error) {
-    console.error("Offer handling failed: ", error.message)
-    //TODO: maybe should remove peer and do some clean up
+    console.error("Omffer handling failed:", error);
+    if (error.name === 'InvalidStateError' && peer.signalingState === 'stable') {
+      peer.restartIce()
+    }
   }
 }
 

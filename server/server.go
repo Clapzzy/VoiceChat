@@ -39,6 +39,7 @@ func giveChannelsParticipants(w http.ResponseWriter, r *http.Request) {
 	type userInfo struct {
 		Username string `json:"username"`
 		PfpNum   int    `json:"pfpNum"`
+    UserId string `json:"userId"`
 	}
 	log.Println(r.URL)
 	channelIds := r.URL.Query()["channel_ids"]
@@ -59,7 +60,7 @@ func giveChannelsParticipants(w http.ResponseWriter, r *http.Request) {
 			log.Println(connection.Username, connection.PfpNum)
 			userInfoToAdd := userInfo{Username: connection.Username, PfpNum: connection.PfpNum}
 			log.Println(userInfoToAdd)
-			userInfos = append(userInfos, userInfo{Username: connection.Username, PfpNum: connection.PfpNum})
+      userInfos = append(userInfos, userInfo{Username: connection.Username, PfpNum: connection.PfpNum, UserId: connection.ClientId})
 		}
 
 		response[v] = userInfos
@@ -72,6 +73,122 @@ func giveChannelsParticipants(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func handleUpdates(w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+
+	if err != nil {
+		log.Println("There has been an error :", err)
+		return
+	}
+	_, roomIdByte, err := conn.ReadMessage()
+
+	type userInfo struct {
+		Username string `json:"username"`
+		PfpNum   int    `json:"pfpNum"`
+    UserId string `json:"userId"`
+	}
+
+  type userResponse struct {
+    ChatIds []string `json:"chatIds, omitempty"`
+    VoiceIds []string `json:"voiceIds, omitempty"`
+  }
+   
+  userResponseMessage := userResponse{}
+	json.Unmarshal(roomIdByte, &userResponseMessage)
+  channelIds := userResponseMessage.VoiceIds
+
+	response := map[string][]userInfo{}
+	for _, v := range channelIds {
+		userInfos := []userInfo{}
+    
+		value, found := ws.Rooms.Load(v)
+		if !found {
+			continue
+		}
+
+		roomData := value.(*ws.WebSocketsRoom)
+    roomData.Subscribers = append(roomData.Subscribers, conn)
+
+		for _, connection := range roomData.Connections {
+			userInfoToAdd := userInfo{Username: connection.Username, PfpNum: connection.PfpNum}
+      
+      userInfos = append(userInfos, userInfo{Username: connection.Username, PfpNum: connection.PfpNum, UserId: connection.ClientId})
+		}
+
+		response[v] = userInfos
+	}
+  
+	log.Println("Initializing chat connection")
+	roomId := connectionInitMessage.RoomId
+
+	if err != nil {
+		log.Println("There has been an error :", err)
+		return
+	}
+	_, found := ws.Rooms.Load(roomId)
+	if !found {
+		//initiate the func for creating a room with room id and the specific user
+		ws.CreateRoom(string(roomId))
+	}
+
+	value, _ := ws.Rooms.Load(roomId)
+
+	wsRoom := value.(*ws.WebSocketsRoom)
+
+	client := new(ws.WebSocketClient)
+	client.PfpNum = connectionInitMessage.PfpNum
+	client.Username = connectionInitMessage.Username
+	client.Send = make(chan ws.Message, 100)
+	client.GenerateClientId(wsRoom)
+	client.Conn = conn
+
+	//informs all of the client of the id of the client that has just joined.
+	idMessage := ws.SignalMessage{}
+	idMessage.Type = "id"
+	idMessage.Id = client.ClientId
+	idMessage.InitData = []any{connectionInitMessage.Username, connectionInitMessage.PfpNum}
+	idSignalmessage := ws.Message{}
+	idSignalmessage.Sender = client
+	idSignalmessage.Data = idMessage
+	fmt.Println("created a user with id :", client.ClientId)
+
+	//TODO: pass pointers and not copies of the structs to MessageChannel and Send
+	wsRoom.MessageChannel <- idSignalmessage
+
+	var userInfoInRoom []UserInfoInRoom
+	userInfoInRoom = append(userInfoInRoom, UserInfoInRoom{
+		UserId: client.ClientId,
+	})
+
+	//give all of the ids to the user that has just joined
+	//could be bad if 2 ppl join at the same time
+	wsRoom.RLock()
+
+	for userId, connection := range wsRoom.Connections {
+		userInfoInRoom = append(userInfoInRoom, UserInfoInRoom{
+			UserId:   userId,
+			PfpNum:   connection.PfpNum,
+			Username: connection.Username,
+		})
+	}
+
+	idBytes, err := json.Marshal(userInfoInRoom)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	wsRoom.RUnlock()
+
+	conn.WriteMessage(websocket.TextMessage, idBytes)
+
+	//maybe not the best way to do this
+	for !wsRoom.HasInitialized {
+		time.Sleep(30 * time.Millisecond)
+	}
+	wsRoom.EnterChannel <- client
+
+	client.ListenForIncomingData(wsRoom)
+}
 func handleConnection(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 
@@ -165,6 +282,7 @@ func main() {
 	}
 
 	http.HandleFunc("/ws", handleConnection)
+  http.HandleFunc("/ws/update", handleUpdates)
 	http.HandleFunc("/channel", giveChannelsParticipants)
 
 	shutdown := make(chan os.Signal, 1)

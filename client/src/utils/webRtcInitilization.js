@@ -49,7 +49,7 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
         console.log("userInfo be like : ", userInfo)
 
         try {
-          initializePeerConnection(setRemoteStreams, userInfo, peerRef, setPeerRoom, webSocketRoom.current, microphoneStreamRef, audioContextRef)
+          initializePeerConnection(setRemoteStreams, userInfo, peerRef, setPeerRoom, webSocketRoom.current, microphoneStreamRef, audioContextRef, userId)
           successfullyProcessed.push(userInfo)
           queuedIds.shift()
         } catch (error) {
