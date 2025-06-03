@@ -12,17 +12,15 @@ type WebSocketsRoom struct {
 	HasInitialized bool
 	Connections    map[string]*WebSocketClient
 	MessageChannel chan Message
-  TextMessageChannel chan ChatMessage
 	ExitChannel    chan *WebSocketClient
 	EnterChannel   chan *WebSocketClient
-  Subscribers []*websocket.Conn
+	Subscribers    []*ChatClient
 }
 
 type ChatRoom struct {
-  sync.RWMutex
-  RoomId string
-  HasInitialized bool
-  Conncections map[string]*ChatClient
+	sync.RWMutex
+	RoomId      string
+	Connections []*ChatClient
 }
 
 var Rooms sync.Map
@@ -31,7 +29,7 @@ var TextChatRooms sync.Map
 func (room *WebSocketsRoom) Run() {
 	defer func() {
 		room.Lock()
-    room.Subscribers = []*websocket.Conn{}
+		room.Subscribers = []*ChatClient{}
 		for _, client := range room.Connections {
 			close(client.Send)
 			client.Conn.Close()
@@ -67,49 +65,45 @@ func (room *WebSocketsRoom) Run() {
 	}
 
 }
-type ChatRoom struct {
-  sync.RWMutex
-  RoomId string
-  HasInitialized bool
-  Conncections map[string]*ChatClient
-}
-func (room *ChatRoom) RemoveChatParticipant(){
+
+func (room *ChatRoom) RemoveChatParticipant(client *ChatClient) {
 	room.Lock()
 	defer room.Unlock()
 
-	close(client.Send)
-	client.Close()
-	delete(room.Connections, client.ClientId)
-  //TODO  Make the functions for Chat room
-  //TODO Complete the function handleUpdates
-  //TODO create a map that contains all of the users that are listening and with them the ids of the chats that they are subscribed to so that they can easily be removed
-
-	//moze da ima problem kato zatvorq send channel i sled tova pratq suobshtenie prez MessageChannel
-	idMessage := SignalMessage{}
-	idMessage.Type = "leave"
-	idMessage.From = client.ClientId
-	leaveMessage := Message{}
-	leaveMessage.Sender = client
-	leaveMessage.Data = idMessage
-	log.Println("removed a user with id : ", client.ClientId)
-
-	room.MessageChannel <- leaveMessage
+	for i, c := range room.Connections {
+		if c != client {
+			room.Connections[i] = room.Connections[len(room.Connections)-1]
+			room.Connections = room.Connections[:len(room.Connections)-1]
+		}
+	}
 
 	if len(room.Connections) <= 0 {
-		close(room.MessageChannel)
-		close(room.EnterChannel)
-		close(room.ExitChannel)
 		Rooms.Delete(room.RoomId)
 	}
 
 	return
 }
+
+func (room *WebSocketsRoom) RemoveSubscriber(subscriber *ChatClient) {
+	room.Lock()
+	defer room.Unlock()
+
+	for i, c := range room.Subscribers {
+		if c != subscriber {
+			room.Subscribers[i] = room.Subscribers[len(room.Subscribers)-1]
+			room.Subscribers = room.Subscribers[:len(room.Subscribers)-1]
+		}
+	}
+
+	return
+}
+
 func (room *WebSocketsRoom) RemoveClient(client *WebSocketClient) {
 	room.Lock()
 	defer room.Unlock()
 
 	close(client.Send)
-	client.Close()
+	client.Conn.Close()
 	delete(room.Connections, client.ClientId)
 
 	//moze da ima problem kato zatvorq send channel i sled tova pratq suobshtenie prez MessageChannel
@@ -138,12 +132,11 @@ func (room *WebSocketsRoom) SendMessage(message Message) {
 	defer room.RUnlock()
 
 	if message.Data.To != "" {
-    if connection, ok := room.Connections[message.Data.To];ok{
-      connection.Send <- message
-    }else{
-      log.Println("Client %s not found, cannot send message.",
-    message.Data.To)
-    }
+		if connection, ok := room.Connections[message.Data.To]; ok {
+			connection.Send <- message
+		} else {
+			log.Printf("Client %s not found, cannot send message.", message.Data.To)
+		}
 		return
 	}
 
@@ -159,6 +152,15 @@ func (room *WebSocketsRoom) AddClient(client *WebSocketClient) {
 	defer room.Unlock()
 
 	room.Connections[client.ClientId] = client
+
+	return
+}
+
+func (room *ChatRoom) AddClient(client *ChatClient) {
+	room.Lock()
+	defer room.Unlock()
+
+	room.Connections = append(room.Connections, client)
 
 	return
 }
@@ -180,18 +182,12 @@ func CreateRoom(roomId string) {
 	return
 }
 
-func CreateChatRoom(roomId string){
-	room := new(WebSocketsRoom)
+func CreateChatRoom(roomId string) {
+	room := new(ChatRoom)
 	room.RoomId = roomId
-	room.MessageChannel = make(chan Message)
-	room.ExitChannel = make(chan *WebSocketClient, 100)
-	room.EnterChannel = make(chan *WebSocketClient, 100)
-	room.Connections = make(map[string]*WebSocketClient)
-	room.HasInitialized = false
+	room.Connections = make([]*ChatClient, 0)
 
 	TextChatRooms.Store(roomId, room)
-
-	go room.Run()
 
 	return
 }

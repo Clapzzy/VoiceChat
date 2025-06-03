@@ -21,7 +21,7 @@ type ConnectionInitResponse struct {
 	Username string `json:"username"`
 }
 
-type UserInfoInRoom struct {
+type UserInfo struct {
 	PfpNum   int    `json:"pfpNum"`
 	Username string `json:"username,omitempty"`
 	UserId   string `json:"userId,omitempty"`
@@ -39,7 +39,7 @@ func giveChannelsParticipants(w http.ResponseWriter, r *http.Request) {
 	type userInfo struct {
 		Username string `json:"username"`
 		PfpNum   int    `json:"pfpNum"`
-    UserId string `json:"userId"`
+		UserId   string `json:"userId"`
 	}
 	log.Println(r.URL)
 	channelIds := r.URL.Query()["channel_ids"]
@@ -60,7 +60,7 @@ func giveChannelsParticipants(w http.ResponseWriter, r *http.Request) {
 			log.Println(connection.Username, connection.PfpNum)
 			userInfoToAdd := userInfo{Username: connection.Username, PfpNum: connection.PfpNum}
 			log.Println(userInfoToAdd)
-      userInfos = append(userInfos, userInfo{Username: connection.Username, PfpNum: connection.PfpNum, UserId: connection.ClientId})
+			userInfos = append(userInfos, userInfo{Username: connection.Username, PfpNum: connection.PfpNum, UserId: connection.ClientId})
 		}
 
 		response[v] = userInfos
@@ -82,112 +82,64 @@ func handleUpdates(w http.ResponseWriter, r *http.Request) {
 	}
 	_, roomIdByte, err := conn.ReadMessage()
 
-	type userInfo struct {
-		Username string `json:"username"`
-		PfpNum   int    `json:"pfpNum"`
-    UserId string `json:"userId"`
+	type userResponse struct {
+		ChatIds  []string `json:"chatIds,omitempty"`
+		VoiceIds []string `json:"voiceIds,omitempty"`
+		Username string   `json:"username"`
+		PfpNum   int      `json:"pfpNum"`
 	}
 
-  type userResponse struct {
-    ChatIds []string `json:"chatIds, omitempty"`
-    VoiceIds []string `json:"voiceIds, omitempty"`
-  }
-   
-  userResponseMessage := userResponse{}
+	userResponseMessage := userResponse{}
 	json.Unmarshal(roomIdByte, &userResponseMessage)
-  channelIds := userResponseMessage.VoiceIds
+	channelIds := userResponseMessage.VoiceIds
 
-	response := map[string][]userInfo{}
+	client := &ws.ChatClient{}
+	client.ChatIds = userResponseMessage.ChatIds
+	client.VoiceIds = userResponseMessage.VoiceIds
+	client.Conn = conn
+	//may be bad if want it to be more flexible
+	client.PfpNum = userResponseMessage.PfpNum
+	client.Username = userResponseMessage.Username
+
+	response := map[string][]UserInfo{}
 	for _, v := range channelIds {
-		userInfos := []userInfo{}
-    
+		userInfos := []UserInfo{}
+
 		value, found := ws.Rooms.Load(v)
 		if !found {
 			continue
 		}
 
 		roomData := value.(*ws.WebSocketsRoom)
-    roomData.Subscribers = append(roomData.Subscribers, conn)
+		roomData.Subscribers = append(roomData.Subscribers, client)
 
 		for _, connection := range roomData.Connections {
-			userInfoToAdd := userInfo{Username: connection.Username, PfpNum: connection.PfpNum}
-      
-      userInfos = append(userInfos, userInfo{Username: connection.Username, PfpNum: connection.PfpNum, UserId: connection.ClientId})
+			userInfos = append(userInfos, UserInfo{Username: connection.Username, PfpNum: connection.PfpNum, UserId: connection.ClientId})
 		}
-
 		response[v] = userInfos
 	}
-  
-	log.Println("Initializing chat connection")
-	roomId := connectionInitMessage.RoomId
 
+	responseBytes, err := json.Marshal(response)
 	if err != nil {
 		log.Println("There has been an error :", err)
 		return
 	}
-	_, found := ws.Rooms.Load(roomId)
-	if !found {
-		//initiate the func for creating a room with room id and the specific user
-		ws.CreateRoom(string(roomId))
+
+	conn.WriteMessage(websocket.TextMessage, responseBytes)
+
+	for _, id := range client.ChatIds {
+		log.Println("Initializing chat connection with id : ", id)
+		_, found := ws.TextChatRooms.Load(id)
+		if !found {
+			ws.CreateChatRoom(id)
+		}
+
+		value, _ := ws.TextChatRooms.Load(id)
+		chatRoom := value.(*ws.ChatRoom)
+		chatRoom.AddClient(client)
 	}
 
-	value, _ := ws.Rooms.Load(roomId)
-
-	wsRoom := value.(*ws.WebSocketsRoom)
-
-	client := new(ws.WebSocketClient)
-	client.PfpNum = connectionInitMessage.PfpNum
-	client.Username = connectionInitMessage.Username
-	client.Send = make(chan ws.Message, 100)
-	client.GenerateClientId(wsRoom)
-	client.Conn = conn
-
-	//informs all of the client of the id of the client that has just joined.
-	idMessage := ws.SignalMessage{}
-	idMessage.Type = "id"
-	idMessage.Id = client.ClientId
-	idMessage.InitData = []any{connectionInitMessage.Username, connectionInitMessage.PfpNum}
-	idSignalmessage := ws.Message{}
-	idSignalmessage.Sender = client
-	idSignalmessage.Data = idMessage
-	fmt.Println("created a user with id :", client.ClientId)
-
-	//TODO: pass pointers and not copies of the structs to MessageChannel and Send
-	wsRoom.MessageChannel <- idSignalmessage
-
-	var userInfoInRoom []UserInfoInRoom
-	userInfoInRoom = append(userInfoInRoom, UserInfoInRoom{
-		UserId: client.ClientId,
-	})
-
-	//give all of the ids to the user that has just joined
-	//could be bad if 2 ppl join at the same time
-	wsRoom.RLock()
-
-	for userId, connection := range wsRoom.Connections {
-		userInfoInRoom = append(userInfoInRoom, UserInfoInRoom{
-			UserId:   userId,
-			PfpNum:   connection.PfpNum,
-			Username: connection.Username,
-		})
-	}
-
-	idBytes, err := json.Marshal(userInfoInRoom)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	wsRoom.RUnlock()
-
-	conn.WriteMessage(websocket.TextMessage, idBytes)
-
-	//maybe not the best way to do this
-	for !wsRoom.HasInitialized {
-		time.Sleep(30 * time.Millisecond)
-	}
-	wsRoom.EnterChannel <- client
-
-	client.ListenForIncomingData(wsRoom)
+	client.ListenForIncomingData()
 }
 func handleConnection(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -237,8 +189,8 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 	//TODO: pass pointers and not copies of the structs to MessageChannel and Send
 	wsRoom.MessageChannel <- idSignalmessage
 
-	var userInfoInRoom []UserInfoInRoom
-	userInfoInRoom = append(userInfoInRoom, UserInfoInRoom{
+	var userInfoInRoom []UserInfo
+	userInfoInRoom = append(userInfoInRoom, UserInfo{
 		UserId: client.ClientId,
 	})
 
@@ -247,7 +199,7 @@ func handleConnection(w http.ResponseWriter, r *http.Request) {
 	wsRoom.RLock()
 
 	for userId, connection := range wsRoom.Connections {
-		userInfoInRoom = append(userInfoInRoom, UserInfoInRoom{
+		userInfoInRoom = append(userInfoInRoom, UserInfo{
 			UserId:   userId,
 			PfpNum:   connection.PfpNum,
 			Username: connection.Username,
@@ -282,7 +234,7 @@ func main() {
 	}
 
 	http.HandleFunc("/ws", handleConnection)
-  http.HandleFunc("/ws/update", handleUpdates)
+	http.HandleFunc("/ws/update", handleUpdates)
 	http.HandleFunc("/channel", giveChannelsParticipants)
 
 	shutdown := make(chan os.Signal, 1)
