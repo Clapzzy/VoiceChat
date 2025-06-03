@@ -1,9 +1,12 @@
 package ws
 
 import (
+	"encoding/json"
 	"log"
 	"sync"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 type WebSocketsRoom struct {
@@ -98,6 +101,13 @@ func (room *WebSocketsRoom) RemoveSubscriber(subscriber *ChatClient) {
 	return
 }
 
+func (room *WebSocketsRoom) AlertSubscribers(leaveMessage *TextMessage) {
+	leaveMessageBytes, _ := json.Marshal(leaveMessage)
+	for _, client := range room.Subscribers {
+		client.Conn.WriteMessage(websocket.TextMessage, leaveMessageBytes)
+	}
+}
+
 func (room *WebSocketsRoom) RemoveClient(client *WebSocketClient) {
 	room.Lock()
 	defer room.Unlock()
@@ -105,6 +115,14 @@ func (room *WebSocketsRoom) RemoveClient(client *WebSocketClient) {
 	close(client.Send)
 	client.Conn.Close()
 	delete(room.Connections, client.ClientId)
+
+	subscriberMessage := TextMessage{}
+	subscriberMessage.Type = "leave"
+	subscriberMessage.ClientId = client.ClientId
+	subscriberMessage.PfpNum = client.PfpNum
+	subscriberMessage.Username = client.Username
+
+	room.AlertSubscribers(&subscriberMessage)
 
 	//moze da ima problem kato zatvorq send channel i sled tova pratq suobshtenie prez MessageChannel
 	idMessage := SignalMessage{}
@@ -150,6 +168,14 @@ func (room *WebSocketsRoom) SendMessage(message Message) {
 func (room *WebSocketsRoom) AddClient(client *WebSocketClient) {
 	room.Lock()
 	defer room.Unlock()
+
+	subscriberMessage := TextMessage{}
+	subscriberMessage.Type = "join"
+	subscriberMessage.ClientId = client.ClientId
+	subscriberMessage.PfpNum = client.PfpNum
+	subscriberMessage.Username = client.Username
+
+	room.AlertSubscribers(&subscriberMessage)
 
 	room.Connections[client.ClientId] = client
 

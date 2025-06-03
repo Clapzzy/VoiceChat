@@ -20,16 +20,17 @@ type TextMessage struct {
 	Message  string `json:"message"`
 	PfpNum   int    `json:"pfpNum"`
 	Username string `json:"username"`
+	ClientId string `json:"ClientId,omitempty"`
 }
 
 type SignalMessage struct {
 	To        string `json:"to,omitempty"`
 	From      string `json:"from,omitempty"`
-	Type      string `json:"type,omitepmty"`
+	Type      string `json:"type,omitempty"`
 	Candidate string `json:"candidate,omitempty"`
-	Sdp       string `json:"sdp,omitepmty"`
+	Sdp       string `json:"sdp,omitempty"`
 	Id        string `json:"id,omitempty"`
-	InitData  []any  `json:"initDate,omitepmty"`
+	InitData  []any  `json:"initDate,omitempty"`
 }
 
 type WebSocketClient struct {
@@ -121,7 +122,6 @@ func (client *ChatClient) SendMessage(roomId string, message string) {
 	return
 }
 
-// TODO: make exit and enter channels of WebSocketsRoom give signals to the subscribers
 func (client *ChatClient) ListenForIncomingData() {
 	go func() {
 		for {
