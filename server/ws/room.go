@@ -121,6 +121,7 @@ func (room *WebSocketsRoom) RemoveClient(client *WebSocketClient) {
 	subscriberMessage.ClientId = client.ClientId
 	subscriberMessage.PfpNum = client.PfpNum
 	subscriberMessage.Username = client.Username
+	subscriberMessage.Message = room.RoomId
 
 	room.AlertSubscribers(&subscriberMessage)
 
@@ -174,6 +175,7 @@ func (room *WebSocketsRoom) AddClient(client *WebSocketClient) {
 	subscriberMessage.ClientId = client.ClientId
 	subscriberMessage.PfpNum = client.PfpNum
 	subscriberMessage.Username = client.Username
+	subscriberMessage.Message = room.RoomId
 
 	room.AlertSubscribers(&subscriberMessage)
 
