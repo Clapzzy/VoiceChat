@@ -93,6 +93,7 @@ func (room *WebSocketsRoom) RemoveSubscriber(subscriber *ChatClient) {
 
 	for i, c := range room.Subscribers {
 		if c != subscriber {
+			log.Println(room.Subscribers)
 			room.Subscribers[i] = room.Subscribers[len(room.Subscribers)-1]
 			room.Subscribers = room.Subscribers[:len(room.Subscribers)-1]
 		}

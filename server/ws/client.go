@@ -135,6 +135,7 @@ func (client *ChatClient) ListenForIncomingData() {
 			messageType, data, err := client.Conn.ReadMessage()
 			if err != nil {
 				client.LeaveAll()
+				log.Println(err)
 				return
 			}
 			if messageType == 8 {
