@@ -74,9 +74,10 @@ func (room *ChatRoom) RemoveChatParticipant(client *ChatClient) {
 	defer room.Unlock()
 
 	for i, c := range room.Connections {
-		if c != client {
+		if c == client {
 			log.Println(room.Connections)
 			log.Println(i)
+			log.Println(c)
 			room.Connections[i] = room.Connections[len(room.Connections)-1]
 			room.Connections = room.Connections[:len(room.Connections)-1]
 		}
@@ -94,7 +95,7 @@ func (room *WebSocketsRoom) RemoveSubscriber(subscriber *ChatClient) {
 	defer room.Unlock()
 
 	for i, c := range room.Subscribers {
-		if c != subscriber {
+		if c == subscriber {
 			room.Subscribers[i] = room.Subscribers[len(room.Subscribers)-1]
 			room.Subscribers = room.Subscribers[:len(room.Subscribers)-1]
 		}
