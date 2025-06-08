@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const wsUrl = "wss://martinkurtev.com:8080/ws/update";
+const wsUrl = "wss://martinkurtev.com/ws/update";
 
 export function useUpdateSocket({ }) {
   const [chatMessages, setChatMessages] = useState({})
