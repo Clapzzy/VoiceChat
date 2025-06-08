@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useEffect, useState, useRef } from "react";
 
-const wsUrl = "ws://localhost:8080/ws/update";
+const wsUrl = "ws://martinkurtev.com:8080/ws/update";
 
 export function useUpdateSocket(chatIds, voiceIds, userInfo) {
   const [chatMessages, setChatMessages] = useState({})

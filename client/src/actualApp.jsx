@@ -53,7 +53,7 @@ export function WebrtcChat({ userInfo }) {
   const [audioContextRef, microphoneStreamRef, gainRef, [setCurrentMic, currentMic, microphoneDevices]] = useSetUpAudioMic()
   const [remoteStream] = useSetUpWebrtc(voiceChannelInfo.find(value => value.name === currentVoiceChat)?.id, userInfo, audioContextRef, microphoneStreamRef)
   const [chatMessages, voiceParticipants, sendMessage] = useUpdateSocket(chatIds, voiceChatIds, userInfo)
-  //TODO: add sounds
+  //TODO: add sound effects
 
 
   return (
@@ -114,4 +114,3 @@ export function WebrtcChat({ userInfo }) {
     </>
   )
 }
-
