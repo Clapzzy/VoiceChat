@@ -27,11 +27,12 @@ export function TextMessageChannel({ setCurrentChannel, currentChannel, channelI
   )
 }
 
-export function VoiceChatChannel({ voiceParticipants, voiceChatName, voiceChatIcon, setCurrentVoice, currentVoice, userInfo, imageUrls }) {
+export function VoiceChatChannel({ voiceParticipants, voiceChatName, voiceChatIcon, setCurrentVoice, currentVoice, userInfo, imageUrls, remoteStream }) {
   const [isHovered, setIsHovered] = useState(false)
   const backgroundColor = currentVoice === voiceChatName ? '#C1CBD1' : isHovered ? '#d1d9db' : '#dee8ea'
 
 
+  //TODO: add a way to interact with remoteStream
   return (
     <div className='flex flex-col'>
       <div
@@ -40,8 +41,6 @@ export function VoiceChatChannel({ voiceParticipants, voiceChatName, voiceChatIc
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         onClick={() => {
-          //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-          //should add profile voiceParticipant with current username and icon when clicked 
           setCurrentVoice(voiceChatName)
         }}>
         <div className='flex flex-row items-center gap-2'>

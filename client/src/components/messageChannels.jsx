@@ -1,6 +1,4 @@
-import { useEffect, useState } from "react";
 import { TextMessageChannel, VoiceChatChannel } from "./messageChannel";
-import axios from "axios";
 
 export function MessageChannelGroup({ setCurrentChannel, currentChannel, channelInfo }) {
   return (
@@ -16,21 +14,7 @@ export function MessageChannelGroup({ setCurrentChannel, currentChannel, channel
 
   )
 }
-export function VoiceChannelGroup({ userInfo, setCurrentVoice, currentVoice, voiceChannelInfo, imageUrls }) {
-  const [voiceChatParticipants, setVoiceChatParticipants] = useState(null)
-
-  useEffect(() => {
-    const channel_ids = voiceChannelInfo.map(element => {
-      return element.id
-    });
-    const queryString = channel_ids.map(id => `channel_ids=${encodeURIComponent(id)}`).join('&');
-    axios.get(`/api/channel?${queryString}`)
-      .then(response => {
-        setVoiceChatParticipants(response.data)
-      }).catch(error => {
-        console.error("Error fetching data : ", error)
-      })
-  }, [voiceChannelInfo])
+export function VoiceChannelGroup({ userInfo, voiceParticipants, setCurrentVoice, currentVoice, voiceChannelInfo, imageUrls, remoteStream }) {
 
   return (
     <div className=' w-full flex flex-col gap-3 mt-3'>
@@ -40,13 +24,14 @@ export function VoiceChannelGroup({ userInfo, setCurrentVoice, currentVoice, voi
         {voiceChannelInfo.map((value) => (
           <VoiceChatChannel
             key={value.name}
+            remoteStream={remoteStream}
+            voiceParticipants={voiceParticipants?.[value.id]}
             imageUrls={imageUrls}
             userInfo={userInfo}
             setCurrentVoice={setCurrentVoice}
             currentVoice={currentVoice}
             voiceChatIcon={value.icon}
             voiceChatName={value.name}
-            voiceParticipants={voiceChatParticipants?.[value.id]}
           />
         ))}
       </div>

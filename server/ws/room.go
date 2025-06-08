@@ -101,7 +101,7 @@ func (room *WebSocketsRoom) RemoveSubscriber(subscriber *ChatClient) {
 	return
 }
 
-func (room *WebSocketsRoom) AlertSubscribers(leaveMessage *TextMessage) {
+func (room *WebSocketsRoom) AlertSubscribers(leaveMessage *UpdateMessage) {
 	leaveMessageBytes, _ := json.Marshal(leaveMessage)
 	for _, client := range room.Subscribers {
 		client.Conn.WriteMessage(websocket.TextMessage, leaveMessageBytes)
@@ -116,12 +116,12 @@ func (room *WebSocketsRoom) RemoveClient(client *WebSocketClient) {
 	client.Conn.Close()
 	delete(room.Connections, client.ClientId)
 
-	subscriberMessage := TextMessage{}
+	subscriberMessage := UpdateMessage{}
 	subscriberMessage.Type = "leave"
 	subscriberMessage.ClientId = client.ClientId
 	subscriberMessage.PfpNum = client.PfpNum
 	subscriberMessage.Username = client.Username
-	subscriberMessage.Message = room.RoomId
+	subscriberMessage.RoomId = room.RoomId
 
 	room.AlertSubscribers(&subscriberMessage)
 
@@ -170,12 +170,12 @@ func (room *WebSocketsRoom) AddClient(client *WebSocketClient) {
 	room.Lock()
 	defer room.Unlock()
 
-	subscriberMessage := TextMessage{}
+	subscriberMessage := UpdateMessage{}
 	subscriberMessage.Type = "join"
 	subscriberMessage.ClientId = client.ClientId
 	subscriberMessage.PfpNum = client.PfpNum
 	subscriberMessage.Username = client.Username
-	subscriberMessage.Message = room.RoomId
+	subscriberMessage.RoomId = room.RoomId
 
 	room.AlertSubscribers(&subscriberMessage)
 

@@ -15,12 +15,18 @@ type Message struct {
 	Sender *WebSocketClient
 }
 
-type TextMessage struct {
+type UpdateMessage struct {
 	Type     string `json:"type"`
-	Message  string `json:"message"`
+	Message  string `json:"message,omitempty"`
 	PfpNum   int    `json:"pfpNum"`
 	Username string `json:"username"`
 	ClientId string `json:"ClientId,omitempty"`
+	RoomId   string `json:"roomId,omitempty"`
+}
+
+type messageRecieved struct {
+	UpdateMessage string `json:"textMessage"`
+	RoomId        string `json:"roomId"`
 }
 
 type SignalMessage struct {
@@ -92,19 +98,20 @@ func (client *ChatClient) LeaveAll() {
 	}
 }
 
-func (client *ChatClient) SendMessage(roomId string, message string) {
-	cr, found := TextChatRooms.Load(roomId)
-	room := cr.(*ChatRoom)
+func (client *ChatClient) SendMessage(message messageRecieved) {
+	cr, found := TextChatRooms.Load(message.RoomId)
 	if !found {
 		log.Println("Couldnt find room to send message to")
 	}
+	room := cr.(*ChatRoom)
 	room.RLock()
 	defer room.RUnlock()
 
-	chatMessage := TextMessage{}
-	chatMessage.Message = message
+	chatMessage := UpdateMessage{}
+	chatMessage.Message = message.UpdateMessage
 	chatMessage.PfpNum = client.PfpNum
 	chatMessage.Username = client.Username
+	chatMessage.RoomId = message.RoomId
 	chatMessage.Type = "text"
 
 	messageBytes, err := json.Marshal(chatMessage)
@@ -135,11 +142,10 @@ func (client *ChatClient) ListenForIncomingData() {
 				return
 			}
 
-			var textMessageToSend string
+			//maybe should add some kind of ack to let the sender know that the others have recieved it.
+			textMessageToSend := messageRecieved{}
 			json.Unmarshal(data, &textMessageToSend)
-			for _, roomId := range client.ChatIds {
-				client.SendMessage(roomId, textMessageToSend)
-			}
+			client.SendMessage(textMessageToSend)
 		}
 	}()
 }

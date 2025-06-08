@@ -22,7 +22,7 @@ type ConnectionInitResponse struct {
 }
 
 type UserInfo struct {
-	PfpNum   int    `json:"pfpNum"`
+	PfpNum   int    `json:"pfpNum,omitempty"`
 	Username string `json:"username,omitempty"`
 	UserId   string `json:"userId,omitempty"`
 }
@@ -85,8 +85,8 @@ func handleUpdates(w http.ResponseWriter, r *http.Request) {
 	type userResponse struct {
 		ChatIds  []string `json:"chatIds,omitempty"`
 		VoiceIds []string `json:"voiceIds,omitempty"`
-		Username string   `json:"username"`
-		PfpNum   int      `json:"pfpNum"`
+		Username string   `json:"username,omitempty"`
+		PfpNum   int      `json:"pfpNum,omitempty"`
 	}
 
 	userResponseMessage := userResponse{}
@@ -107,6 +107,7 @@ func handleUpdates(w http.ResponseWriter, r *http.Request) {
 
 		value, found := ws.Rooms.Load(v)
 		if !found {
+			log.Println("Room not found")
 			continue
 		}
 

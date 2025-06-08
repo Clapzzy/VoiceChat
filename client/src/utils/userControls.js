@@ -16,7 +16,6 @@ export function useSetUpAudioMic() {
     audioContextRef.current = new AudioContext()
 
 
-    audioContextRef.current.suspend()
 
     navigator.mediaDevices.enumerateDevices()
       .then((devices) => {
@@ -27,6 +26,7 @@ export function useSetUpAudioMic() {
         }
       })
 
+    audioContextRef.current.suspend()
     return () => {
       audioContextRef.current.close()
     }
@@ -59,7 +59,7 @@ export function useSetUpAudioMic() {
 
       })
       .catch((err) => {
-        console.log("Got an error :", err)
+        console.error("Got an error :", err)
       })
 
     return () => {
@@ -75,7 +75,7 @@ export function useSetUpAudioMic() {
         microphoneStreamRef.current?.getTracks().forEach(t => t.stop())
       }
     }
-  }, [currentMic])
+  }, [currentMic, microphoneDevices])
 
 
   return [audioContextRef, microphoneStreamRef, gainRef, [setCurrentMic, currentMic, microphoneDevices]]
