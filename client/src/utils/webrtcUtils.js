@@ -16,29 +16,29 @@ export const handleNewIds = (newIds, setIdAwaiter, peerRef, currentUserId) => {
       id.userId !== currentUserId?.current
     )
   ])
-  setIdAwaiter(prev =>
-    [...prev,
-    ...newIds.filter(id =>
-      !prev.includes(id) &&
-      !peerRef.current[id]
-    )
-    ]);
 }
 
 export const addStreamToPeer = (peerConnection, stream) => {
-  if (!stream?.current || !stream.current.getAudioTracks().length) return;
+  if (!stream?.current || !stream.current.getAudioTracks().length) {
+    console.warn('No auido stream available to add to peer')
+    return
+  }
 
   try {
-    const audioTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track?.kind === 'audio')
+    const existingTransceiver = peerConnection.getTransceivers().find(t =>
+      t.sender && t.sender.track && t.sender.track.kind === 'audio'
+    )
 
-    if (audioTransceiver) {
-      audioTransceiver.sender.replaceTrack(stream.current.getAudioTracks()[0])
+    if (existingTransceiver) {
+      existingTransceiver.sender.replaceTrack(stream.current.getAudioTracks()[0])
+        .catch(error => console.error("Error replacing track:", error))
     } else {
       peerConnection.addTransceiver(stream.current.getAudioTracks()[0], {
         direction: 'sendrecv',
         streams: [stream.current]
-      })
+      });
     }
+
   } catch (error) {
     console.error("Error in addStreamToPeer:", error)
   }
@@ -46,6 +46,7 @@ export const addStreamToPeer = (peerConnection, stream) => {
 
 export const setupWebSocket = async (wsUrl, initObj, idAwaiter, peerRef, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef, currentUserId) => {
   const webSocket = new WebSocket(`${wsUrl}`)
+
   let resolveId
   let idPromise = new Promise((res) => resolveId = res)
 
@@ -81,13 +82,15 @@ export const createPeerOffer = async (peerConnection, webSocket, clientToSendTo)
       console.warn("Cannot make an offer in current peer state. Initilizing rollback. Peer signal state :", peerConnection.signalingState)
     }
 
-    const transceiver = peerConnection.getTransceivers()
-    const audioTransceiver = transceiver.find(t => t.receiver.track?.kind === 'audio')
-    if (!audioTransceiver) {
+    const existingTransceiver = peerConnection.getTransceivers()
+    if (existingTransceiver.length === 0) {
       peerConnection.addTransceiver('audio', { direction: 'sendrecv' })
     }
 
-    const offer = await peerConnection.createOffer()
+    const offer = await peerConnection.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: false
+    })
     await peerConnection.setLocalDescription(offer)
 
     webSocket.send(JSON.stringify({
@@ -106,7 +109,9 @@ export const createPeerOffer = async (peerConnection, webSocket, clientToSendTo)
         transceiver.stop()
       })
 
-      peerConnection.addTransceiver('audio', { direction: 'sendrecv' })
+      setTimeout(() => {
+        peerConnection.addTransceiver('audio', { direction: 'sendrecv' })
+      }, 100)
     }
   }
 }
@@ -124,6 +129,7 @@ export const setupIceCandidateHandler = (peerConnection, webSocket, clientToSend
     }
   }
   peerConnection.oniceconnectionstatechange = () => {
+    console.log("ICE connection state: ", peerConnection.iceConnectionState)
     if (peerConnection.iceConnectionState === 'failed') {
       peerConnection.restartIce()
     }
@@ -132,7 +138,9 @@ export const setupIceCandidateHandler = (peerConnection, webSocket, clientToSend
 
 export const setupRemoteStreamHandler = (peerConnection, setRemoteStream) => {
   peerConnection.ontrack = (event) => {
-    setRemoteStream(event.streams[0])
+    if (event.streams && event.streams[0]) {
+      setRemoteStream(event.streams[0])
+    }
   }
 }
 
@@ -155,9 +163,6 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
 
   newConnection.oniceconnectionstatechange = () => {
     console.log('Ice connection state : ', newConnection.iceConnectionState)
-  }
-
-  newConnection.oniceconnectionstatechange = () => {
     if (newConnection.iceConnectionState === 'disconnected' ||
       newConnection.iceConnectionState === 'failed') {
       newConnection.restartIce()
@@ -187,27 +192,36 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
   }
   setupRemoteStreamHandler(newConnection, (stream) => {
     if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-      console.ward("Audio context in undefined or closed")
+      console.warn("Audio context in undefined or closed")
       return
     }
 
-    const source = audioContextRef.current.createMediaStreamSource(stream)
-    let gainNode = audioContextRef.current.createGain();
-    gainNode.gain.value = 1
+    if (!stream || !stream.getAudioTracks || stream.getAudioTracks().length === 0) {
+      console.warn("Invalid stream or no audio tracks available")
+      return
+    }
+    try {
 
-    source.connect(gainNode)
-    gainNode.connect(audioContextRef.current.destination)
+      const source = audioContextRef.current.createMediaStreamSource(stream)
+      let gainNode = audioContextRef.current.createGain();
+      gainNode.gain.value = 1
 
-    setRemoteStreams(prev => {
-      return ({
-        ...prev, [userInfo.userId]: {
-          username: userInfo.username,
-          pfpNum: userInfo.pfpNum,
-          stream: stream,
-          nodes: { source, gainNode }
-        }
+      source.connect(gainNode)
+      gainNode.connect(audioContextRef.current.destination)
+
+      setRemoteStreams(prev => {
+        return ({
+          ...prev, [userInfo.userId]: {
+            username: userInfo.username,
+            pfpNum: userInfo.pfpNum,
+            stream: stream,
+            nodes: { source, gainNode }
+          }
+        })
       })
-    })
+    } catch (error) {
+      console.error("Error while setting up auido context for remote stream: ", error)
+    }
   })
 
   setupIceCandidateHandler(
@@ -222,12 +236,14 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
   }))
   console.log(newConnection)
 
-  if (!newConnection.polite) {
-    createPeerOffer(
-      newConnection,
-      webSocketRoom,
-      userInfo.userId
-    )
+  if (!newConnection.polite && newConnection.signalingState === 'stable') {
+    setTimeout(() => {
+      createPeerOffer(
+        newConnection,
+        webSocketRoom,
+        userInfo.userId
+      )
+    }, 100)
   }
 
 }
@@ -236,12 +252,17 @@ const handleOffer = async (offer, peerRef, webSocket, currentUserId) => {
   let timeWaited = 0
   console.log("Handling offer from: ", offer.from)
 
-  while (!peerRef.current[offer.from] && timeWaited > 50) {
+  while (!peerRef.current[offer.from] && timeWaited < 50) {
     await sleep(100)
     timeWaited++
   }
 
   const peer = peerRef?.current[offer.from]
+
+  if (!peer) {
+    console.warn("Peer not found after waiting")
+    return
+  }
 
   try {
     const offerDescription = new RTCSessionDescription({
@@ -264,24 +285,27 @@ const handleOffer = async (offer, peerRef, webSocket, currentUserId) => {
       await peer.setRemoteDescription(offerDescription)
     }
 
-    const answer = await peer.createAnswer({ iceRestart: true });
-
-    const waitForICEGathering = new Promise(resolve => {
-      if (peer.iceGatheringState === 'complete') {
-        resolve()
-      } else {
-        const checkState = () => {
-          if (peer.iceGatheringState === 'complete') {
-            peer.removeEventListener('icegatheringstatechange', checkState)
-            resolve()
-          }
-        }
-        peer.addEventListener('icegatheringstatechange', checkState)
-      }
-    })
-
+    const answer = await peer.createAnswer();
     await peer.setLocalDescription(answer)
-    await waitForICEGathering
+
+    //dont know weather to use
+    /*
+       const waitForICEGathering = new Promise(resolve => {
+         if (peer.iceGatheringState === 'complete') {
+           resolve()
+         } else {
+           const checkState = () => {
+             if (peer.iceGatheringState === 'complete') {
+               peer.removeEventListener('icegatheringstatechange', checkState)
+               resolve()
+             }
+           }
+           peer.addEventListener('icegatheringstatechange', checkState)
+         }
+       })
+   
+       await waitForICEGathering
+      */
 
     webSocket.send(JSON.stringify({
       type: 'answer',
@@ -298,7 +322,6 @@ const handleOffer = async (offer, peerRef, webSocket, currentUserId) => {
 }
 
 const handleAnswer = async (message, peerRef) => {
-
   const peer = peerRef.current[message.from]
 
   if (!peer) {
@@ -334,8 +357,10 @@ const handleCandidate = async (message, peerRef) => {
     } else {
       candidate = message.candidate
     }
-    if (candidate && peerRef.current[message.from]) {
-      await peerRef.current[message.from].addIceCandidate(new RTCIceCandidate(candidate))
+
+    const peer = peerRef.current[message.from]
+    if (candidate && peer && peer.remoteDescription) {
+      await peer.addIceCandidate(new RTCIceCandidate(candidate))
     }
 
   } catch (error) {
@@ -362,21 +387,24 @@ async function handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteSt
           return newStreams
         })
 
-        if (streamInfoToClean) {
-          streamInfoToClean.forEach(node => {
-            node?.disconnect()
-          })
+        if (streamInfoToClean && streamInfoToClean.nodes) {
+          const { source, gainNode } = streamInfoToClean.nodes
+          source?.disconnect()
+          gainNode?.disconnect()
         }
 
-        peerRef.current[message.from]?.getTransceivers().forEach(transceiver => {
-          if (transceiver.sender.track) {
-            transceiver.sender.track.stop()
-            transceiver.sender.replaceTrack(null)
-          }
-          transceiver.stop()
-        })
+        const peerToClose = peerRef.current[message.from]
+        if (peerToClose) {
+          peerToClose?.getTransceivers().forEach(transceiver => {
+            if (transceiver.sender.track) {
+              transceiver.sender.track.stop()
+              transceiver.sender.replaceTrack(null)
+            }
+            transceiver.stop()
+          })
+          peerToClose.close()
+        }
 
-        peerRef.current[message.from]?.close()
         if (setPeerRoom) {
           setPeerRoom(prev => {
             const newPeers = { ...prev };

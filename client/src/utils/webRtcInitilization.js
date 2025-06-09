@@ -29,7 +29,6 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
   const [remoteStream, setRemoteStreams] = useState({})
 
 
-  //TODO: 6.make the chat function using websockets and some kind of persistent message.
   //TODO: 7. Make a simple auth system(give secret id to each user and check weather the secret id mathches the given to the user when making a request)
 
   useEffect(() => {
@@ -58,6 +57,7 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
         }
       }
       setIdAwaiter(prev => prev.filter(id => !successfullyProcessed.includes(id)))
+      processingRef.current = false
     }
     processNextId()
 
@@ -209,7 +209,7 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
       abortController.abort()
       cleanUp()
     }
-  }, [roomId, userId])
+  }, [roomId, userInfo])
 
   if (!roomId) return [remoteStream]
   //inits webSocket conn
