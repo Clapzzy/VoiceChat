@@ -113,7 +113,7 @@ func (client *ChatClient) SendMessage(message messageRecieved) {
 	chatMessage.PfpNum = client.PfpNum
 	chatMessage.Username = client.Username
 	chatMessage.RoomId = message.RoomId
-	chatMessage.Type = "text"
+	chatMessage.Type = "message"
 
 	messageBytes, err := json.Marshal(chatMessage)
 	if err != nil {
