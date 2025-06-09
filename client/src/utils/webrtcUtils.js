@@ -413,6 +413,8 @@ async function handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteSt
           });
         }
 
+        delete peerRef.current[message.from]
+
         break
       case 'offer':
         //malumno
