@@ -164,8 +164,8 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
           peer.onicecandidate = null
           peer.close()
 
-          if (remoteStream[peerId]) {
-            streamInfoToClean.forEach(node => {
+          if (remoteStream[peerId]?.nodes) {
+            remoteStream[peerId]?.nodes.forEach(node => {
               node?.disconnect()
             })
           }
