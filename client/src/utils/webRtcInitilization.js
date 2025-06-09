@@ -69,6 +69,8 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
         const sender = peerConnection.getSenders().find(s => s.track.kind == 'audio')
         if (sender) {
           sender.replaceTrack(microphoneStreamRef.current.getAudioTracks()[0])
+        } else if (!sender && microphoneStreamRef.current) {
+          peerConnection.addTrack(microphoneStreamRef.current.getAudioTracks()[0])
         }
       })
     }

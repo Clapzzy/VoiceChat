@@ -26,15 +26,20 @@ export const handleNewIds = (newIds, setIdAwaiter, peerRef, currentUserId) => {
 }
 
 export const addStreamToPeer = (peerConnection, stream) => {
+  if (!stream.current) return
+
   const sender = peerConnection.getSenders().find(s => s.track?.kind === 'audio')
 
-  if (sender && stream.current) {
+  if (!sender) {
+    //placeholder
+    const audioTrack = new MediaStreamTrack()
+
+    sender = peerConnection.addTrack(audioTrack)
     sender.replaceTrack(stream.current.getAudioTracks()[0])
+  }
 
-  } else if (!sender && stream.current) {
-
-    peerConnection.addTrack(stream.current.getAudioTracks()[0],
-      stream.current)
+  if (stream.current.getAudioTracks().length > 0) {
+    sender.replaceTrack(stream.current.getAudioTracks()[0])
   }
 }
 
@@ -71,8 +76,8 @@ export const setupWebSocket = async (wsUrl, initObj, idAwaiter, peerRef, setRemo
 export const createPeerOffer = async (peerConnection, webSocket, clientToSendTo) => {
   try {
     if (peerConnection.signalingState !== 'stable') {
-      console.warn("Cannot create offer in current state: ", peerConnection.signalingState)
-      return
+      await peerConnection.setLocalDescription({ type: 'rollback' })
+      console.warn("Cannot make an offer in current peer state. Initilizing rollback. Peer signal state :", peerConnection.signalingState)
     }
     const offer = await peerConnection.createOffer()
     await peerConnection.setLocalDescription(offer)
@@ -84,6 +89,12 @@ export const createPeerOffer = async (peerConnection, webSocket, clientToSendTo)
     }))
   } catch (error) {
     console.error("Offer creating failed :", error.message)
+    if (error.toString().includes('m-lines')) {
+      console.warn("resetting media. sdp inconsistency detected")
+      peerConnection.getTransceivers().forEach(transceiver => {
+        if (transceiver.sender.track) transceiver.sender.replaceTrack(null)
+      })
+    }
   }
 }
 
@@ -137,7 +148,13 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
     }
   }
 
+  let isNegotiating = false
   newConnection.onnegotiationneeded = async () => {
+    if (isNegotiating) {
+      console.log("Skipping concurent negotiation")
+      return
+    }
+    isNegotiating = true
     try {
       if (!newConnection.polite) {
         createPeerOffer(
@@ -148,6 +165,8 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
       }
     } catch (error) {
       console.error('Negotiation error: ', error)
+    } finally {
+      isNegotiating = false
     }
   }
   setupRemoteStreamHandler(newConnection, (stream) => {
@@ -199,7 +218,7 @@ const handleOffer = async (offer, peerRef, webSocket, currentUserId) => {
   let timeWaited = 0
   console.log("Handling offer from : ", offer.from)
 
-  while (!peerRef.current[offer.from] && waitCount > 50) {
+  while (!peerRef.current[offer.from] && timeWaited > 50) {
     await sleep(100)
     timeWaited++
   }
