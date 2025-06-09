@@ -26,16 +26,18 @@ export const handleNewIds = (newIds, setIdAwaiter, peerRef, currentUserId) => {
 }
 
 export const addStreamToPeer = (peerConnection, stream) => {
-  if (!stream?.current) return;
+  if (!stream?.current || !stream.current.getAudioTracks().length) return;
 
   try {
-    const sender = peerConnection.getSenders().find(s => s.track?.kind === 'audio')
+    const audioTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track?.kind === 'audio')
 
-    if (sender && stream.current.getAudioTracks().length > 0) {
-
-      sender.replaceTrack(stream.current.getAudioTracks()[0]);
-    } else if (!sender && stream.current.getAudioTracks().length > 0) {
-      peerConnection.addTrack(stream.current.getAudioTracks()[0], stream.current)
+    if (audioTransceiver) {
+      audioTransceiver.sender.replaceTrack(stream.current.getAudioTracks()[0])
+    } else {
+      peerConnection.addTransceiver(stream.current.getAudioTracks()[0], {
+        direction: 'sendrecv',
+        streams: [stream.current]
+      })
     }
   } catch (error) {
     console.error("Error in addStreamToPeer:", error)
@@ -78,6 +80,13 @@ export const createPeerOffer = async (peerConnection, webSocket, clientToSendTo)
       await peerConnection.setLocalDescription({ type: 'rollback' })
       console.warn("Cannot make an offer in current peer state. Initilizing rollback. Peer signal state :", peerConnection.signalingState)
     }
+
+    const transceiver = peerConnection.getTransceivers()
+    const audioTransceiver = transceiver.find(t => t.receiver.track?.kind === 'audio')
+    if (!audioTransceiver) {
+      peerConnection.addTransceiver('audio', { direction: 'sendrecv' })
+    }
+
     const offer = await peerConnection.createOffer()
     await peerConnection.setLocalDescription(offer)
 
@@ -86,13 +95,18 @@ export const createPeerOffer = async (peerConnection, webSocket, clientToSendTo)
       sdp: offer.sdp,
       to: clientToSendTo
     }))
+
   } catch (error) {
     console.error("Offer creating failed :", error.message)
-    if (error.toString().includes('m-lines')) {
-      console.warn("resetting media. sdp inconsistency detected")
+
+    if (error.toString().includes('m-lines') || error.toString().includes('m-line')) {
+      console.warn("resetting media. m-line inconsistency detected")
+
       peerConnection.getTransceivers().forEach(transceiver => {
-        if (transceiver.sender.track) transceiver.sender.replaceTrack(null)
+        transceiver.stop()
       })
+
+      peerConnection.addTransceiver('audio', { direction: 'sendrecv' })
     }
   }
 }
@@ -123,7 +137,10 @@ export const setupRemoteStreamHandler = (peerConnection, setRemoteStream) => {
 }
 
 export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, setPeerRoom, webSocketRoom, microphoneStreamRef, audioContextRef, currentUserId) => {
-  if (peerRef?.current?.[userInfo.userId]) return
+  if (peerRef?.current?.[userInfo.userId]) {
+    console.warn("Peer connection already exists for: ", userInfo.userId)
+    return
+  }
 
   console.log("creating a peer with the id : ", userInfo.userId)
   const newConnection = creatPeerConnection()
@@ -169,12 +186,13 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
     }
   }
   setupRemoteStreamHandler(newConnection, (stream) => {
-    const source = audioContextRef.current.createMediaStreamSource(stream)
-    let gainNode
-    if (audioContextRef.current.state !== 'closed') {
-      gainNode = audioContextRef.current.createGain();
+    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+      console.ward("Audio context in undefined or closed")
+      return
     }
 
+    const source = audioContextRef.current.createMediaStreamSource(stream)
+    let gainNode = audioContextRef.current.createGain();
     gainNode.gain.value = 1
 
     source.connect(gainNode)
@@ -191,6 +209,7 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
       })
     })
   })
+
   setupIceCandidateHandler(
     newConnection,
     webSocketRoom,
@@ -215,7 +234,7 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
 
 const handleOffer = async (offer, peerRef, webSocket, currentUserId) => {
   let timeWaited = 0
-  console.log("Handling offer from : ", offer.from)
+  console.log("Handling offer from: ", offer.from)
 
   while (!peerRef.current[offer.from] && timeWaited > 50) {
     await sleep(100)
@@ -225,26 +244,24 @@ const handleOffer = async (offer, peerRef, webSocket, currentUserId) => {
   const peer = peerRef?.current[offer.from]
 
   try {
+    const offerDescription = new RTCSessionDescription({
+      type: 'offer',
+      sdp: offer.sdp
+    })
 
     if (peer.signalingState !== 'stable') {
       if (peer.polite) {
         console.log("Polite peer. roolback")
         await Promise.all([
           peer.setLocalDescription({ type: "rollback" }),
-          peer.setRemoteDescription(new RTCSessionDescription({
-            type: 'offer',
-            sdp: offer.sdp,
-          }))
+          peer.setRemoteDescription(offerDescription)
         ])
       } else {
         console.warn("Impolite peer. Ignoring offer")
         return
       }
     } else {
-      await peer.setRemoteDescription(new RTCSessionDescription({
-        type: 'offer',
-        sdp: offer.sdp,
-      }))
+      await peer.setRemoteDescription(offerDescription)
     }
 
     const answer = await peer.createAnswer({ iceRestart: true });
@@ -273,7 +290,8 @@ const handleOffer = async (offer, peerRef, webSocket, currentUserId) => {
     }))
   } catch (error) {
     console.error("Omffer handling failed:", error);
-    if (error.name === 'InvalidStateError' && peer.signalingState === 'stable') {
+    if (error.name === 'InvalidStateError') {
+      console.log('Restarting ICE due to invalid state')
       peer.restartIce()
     }
   }
@@ -287,15 +305,18 @@ const handleAnswer = async (message, peerRef) => {
     console.warn("Peer connection not found for answer")
     return
   }
+
   try {
     if (peer.signalingState !== 'have-local-offer') {
       console.warn('Unexprected sginaling state : ', peer.signalingState)
       return;
     }
+
     await peerRef.current[message.from].setRemoteDescription(new RTCSessionDescription({
       type: 'answer',
       sdp: message.sdp
     }))
+
     console.log("Answer successfully set")
   } catch (error) {
     console.error("Falied ot set answer: ", error.message)
@@ -347,12 +368,17 @@ async function handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteSt
           })
         }
 
-        peerRef.current[message.from]?.getSenders().forEach(sender => {
-          if (sender.track && sender.track.kind === 'audio') {
-            sender.track.stop()
-            peerRef.current[message.from]?.removeTrack(sender);
+        peerRef.current[message.from]?.getTransceivers().forEach(transceiver => {
+          if (transceiver.sender.track) {
+            transceiver.sender.track.stop()
+            transceiver.sender.replaceTrack(null)
           }
+          transceiver.stop()
         })
+
+        peerRef.current[message.from]?.ontrack = null
+        peerRef.current[message.from]?.onicecandidate = null
+        peerRef.current[message.from]?.onnegotiationneeded = null
 
         peerRef.current[message.from]?.close()
         if (setPeerRoom) {

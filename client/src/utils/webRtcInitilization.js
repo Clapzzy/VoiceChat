@@ -64,29 +64,44 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
   }, [idAwaiter])
 
   useEffect(() => {
-    if (peerRoom) {
-      Object.values(peerRoom).forEach(peerConnection => {
-        const sender = peerConnection.getSenders().find(s => s.track.kind == 'audio')
-        if (sender) {
-          sender.replaceTrack(microphoneStreamRef.current.getAudioTracks()[0])
-        } else if (!sender && microphoneStreamRef.current) {
-          peerConnection.addTrack(microphoneStreamRef.current.getAudioTracks()[0])
+    if (!peerRoom || !microphoneStreamRef.current) return
+
+    Object.values(peerRoom).forEach(peerConnection => {
+      if (peerConnection.connectionState === 'closed') return
+
+      try {
+        const audioTransceiver = peerConnection.getTransceivers().find(
+          t => t.sender.track && t.sender.track.kind === 'audio'
+        )
+        if (audioTransceiver && microphoneStreamRef.current.getAudioTracks().length > 0) {
+          audioTransceiver.sender.replaceTrack(microphoneStreamRef.current.getAudioTracks()[0])
+            .catch(error => console.error("Error replacing track: ", error))
+        } else if (!audioTransceiver && microphoneStreamRef.current.getAudioTracks()[0]) {
+          peerConnection.addTransceiver(microphoneStreamRef.current.getAudioTracks()[0], {
+            direction: 'sendrecv',
+            streams: [microphoneStreamRef.current]
+          })
         }
-      })
-    }
+      } catch (error) {
+        console.error("Error updating peer connecton with new mic stream : ", error)
+      }
+    })
+
     return () => {
       if (peerRoom) {
         Object.values(peerRoom).forEach(peerConnection => {
-          peerConnection.getSenders().forEach(sender => {
-            if (sender.track && sender.track.kind === 'audio') {
-              sender.track.stop()
-              peerConnection.removeTrack(sender)
+          if (peerConnection.connectionState === 'closed') return
+
+          peerConnection.getTransceivers().forEach(transceiver => {
+            if (transceiver.sender.track && transceiver.sender.track.kind === 'audio') {
+              transceiver.sender.track.stop()
+              transceiver.sender.replaceTrack(null).catch(console.error)
             }
           })
         })
       }
     }
-  }, [micStream])
+  }, [micStream, peerRoom])
 
   useEffect(() => {
     const abortController = new AbortController()
@@ -113,21 +128,26 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
 
       if (peerRoom) {
         Object.entries(peerRoom).forEach(([peerId, peer]) => {
-          peer.getSenders().forEach(sender => {
-            if (sender.track && sender.track.kind === 'audio') {
-              sender.track.stop()
-              peer.removeTrack(sender)
-            }
-          })
 
-          peer.ontrack = null
-          peer.onicecandidate = null
-          peer.close()
+          if (peer.connectionState !== "closed") {
+            peer.getTransceivers().forEach(transceiver => {
+              if (transceiver.sender.track) {
+                transceiver.sender.track.stop()
+                transceiver.sender.replaceTrack(null)
+              }
+              transceiver.stop()
+            })
+
+            peer.ontrack = null
+            peer.onicecandidate = null
+            peer.onnegotiationneeded = null
+            peer.close()
+          }
 
           if (remoteStream[peerId]?.nodes) {
-            remoteStream[peerId]?.nodes.forEach(node => {
-              node?.disconnect()
-            })
+            const { source, gainNode } = remoteStream[peerId].nodes
+            source?.disconnect()
+            gainNode?.disconnect()
           }
         })
 
@@ -140,7 +160,7 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
         if (setIdAwaiter) {
           setIdAwaiter([])
         }
-        peerRef.current = null
+        peerRef.current = {}
       }
     }
 
