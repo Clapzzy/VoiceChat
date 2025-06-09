@@ -54,6 +54,7 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
           queuedIds.shift()
         } catch (error) {
           console.error(`Failed to initialize a peer : ${userInfo} : `, error)
+          queuedIds.shift()
         }
       }
       setIdAwaiter(prev => prev.filter(id => !successfullyProcessed.includes(id)))
@@ -134,6 +135,8 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
           throw new Error("Connection failed")
         }
 
+      } catch (error) {
+        console.error("There has been an error in the setting up of the webrtc ws socket: ", error)
       } finally {
         isInitilizing.current = false
       }

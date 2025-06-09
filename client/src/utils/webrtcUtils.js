@@ -137,7 +137,7 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
     }
   }
 
-  newConnection.onnegotiationneeded = async = () => {
+  newConnection.onnegotiationneeded = async () => {
     try {
       if (!newConnection.polite) {
         createPeerOffer(
