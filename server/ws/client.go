@@ -102,6 +102,7 @@ func (client *ChatClient) SendMessage(message messageRecieved) {
 	cr, found := TextChatRooms.Load(message.RoomId)
 	if !found {
 		log.Println("Couldnt find room to send message to")
+		return
 	}
 	room := cr.(*ChatRoom)
 	room.RLock()

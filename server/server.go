@@ -105,11 +105,12 @@ func handleUpdates(w http.ResponseWriter, r *http.Request) {
 	for _, v := range channelIds {
 		userInfos := []UserInfo{}
 
-		value, found := ws.Rooms.Load(v)
+		_, found := ws.Rooms.Load(v)
 		if !found {
-			log.Println("Room not found")
-			continue
+			ws.CreateRoom(v)
 		}
+
+		value, _ := ws.Rooms.Load(v)
 
 		roomData := value.(*ws.WebSocketsRoom)
 		roomData.Subscribers = append(roomData.Subscribers, client)

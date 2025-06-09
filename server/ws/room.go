@@ -61,7 +61,7 @@ func (room *WebSocketsRoom) Run() {
 			go room.RemoveClient(clientId)
 
 		case <-time.After(5 * time.Minute):
-			if len(room.Connections) <= 0 {
+			if len(room.Connections) <= 0 && len(room.Subscribers) <= 0 {
 				return
 			}
 		}
@@ -75,9 +75,7 @@ func (room *ChatRoom) RemoveChatParticipant(client *ChatClient) {
 
 	for i, c := range room.Connections {
 		if c == client {
-			log.Println(room.Connections)
-			log.Println(i)
-			log.Println(c)
+			log.Println("Removed a chat participant from :", room.RoomId)
 			room.Connections[i] = room.Connections[len(room.Connections)-1]
 			room.Connections = room.Connections[:len(room.Connections)-1]
 		}
@@ -96,6 +94,7 @@ func (room *WebSocketsRoom) RemoveSubscriber(subscriber *ChatClient) {
 
 	for i, c := range room.Subscribers {
 		if c == subscriber {
+			log.Println("Removed a subscriber")
 			room.Subscribers[i] = room.Subscribers[len(room.Subscribers)-1]
 			room.Subscribers = room.Subscribers[:len(room.Subscribers)-1]
 		}
@@ -139,7 +138,7 @@ func (room *WebSocketsRoom) RemoveClient(client *WebSocketClient) {
 
 	room.MessageChannel <- leaveMessage
 
-	if len(room.Connections) <= 0 {
+	if len(room.Connections) <= 0 && len(room.Subscribers) <= 0 {
 		close(room.MessageChannel)
 		close(room.EnterChannel)
 		close(room.ExitChannel)
@@ -203,6 +202,7 @@ func CreateRoom(roomId string) {
 	room.ExitChannel = make(chan *WebSocketClient, 100)
 	room.EnterChannel = make(chan *WebSocketClient, 100)
 	room.Connections = make(map[string]*WebSocketClient)
+	room.Subscribers = make([]*ChatClient, 0)
 	room.HasInitialized = false
 
 	Rooms.Store(roomId, room)
