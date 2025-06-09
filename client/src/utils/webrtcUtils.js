@@ -31,11 +31,7 @@ export const addStreamToPeer = (peerConnection, stream) => {
   const sender = peerConnection.getSenders().find(s => s.track?.kind === 'audio')
 
   if (!sender) {
-    //placeholder
-    const audioTrack = new MediaStreamTrack()
-
-    sender = peerConnection.addTrack(audioTrack)
-    sender.replaceTrack(stream.current.getAudioTracks()[0])
+    sender.addTrack(stream.current.getAudioTracks()[0], stream.current)
   }
 
   if (stream.current.getAudioTracks().length > 0) {
