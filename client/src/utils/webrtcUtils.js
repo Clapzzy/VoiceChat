@@ -26,16 +26,19 @@ export const handleNewIds = (newIds, setIdAwaiter, peerRef, currentUserId) => {
 }
 
 export const addStreamToPeer = (peerConnection, stream) => {
-  if (!stream.current) return
+  if (!stream?.current) return;
 
-  const sender = peerConnection.getSenders().find(s => s.track?.kind === 'audio')
+  try {
+    const sender = peerConnection.getSenders().find(s => s.track?.kind === 'audio')
 
-  if (!sender) {
-    sender.addTrack(stream.current.getAudioTracks()[0], stream.current)
-  }
+    if (sender && stream.current.getAudioTracks().length > 0) {
 
-  if (stream.current.getAudioTracks().length > 0) {
-    sender.replaceTrack(stream.current.getAudioTracks()[0])
+      sender.replaceTrack(stream.current.getAudioTracks()[0]);
+    } else if (!sender && stream.current.getAudioTracks().length > 0) {
+      peerConnection.addTrack(stream.current.getAudioTracks()[0], stream.current)
+    }
+  } catch (error) {
+    console.error("Error in addStreamToPeer:", error)
   }
 }
 
