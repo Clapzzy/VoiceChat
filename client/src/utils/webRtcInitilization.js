@@ -104,11 +104,51 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
     //TODO : dont use this
     const interval = setInterval(checkStream, 1000)
 
+    const cleanUp = () => {
+      clearInterval(interval)
+      if (webSocketRoom.current) {
+        webSocketRoom.current.onclose = null
+        webSocketRoom.current?.close()
+      }
+
+      if (peerRoom) {
+        Object.entries(peerRoom).forEach(([peerId, peer]) => {
+          peer.getSenders().forEach(sender => {
+            if (sender.track && sender.track.kind === 'audio') {
+              sender.track.stop()
+              peer.removeTrack(sender)
+            }
+          })
+
+          peer.ontrack = null
+          peer.onicecandidate = null
+          peer.close()
+
+          if (remoteStream[peerId]?.nodes) {
+            remoteStream[peerId]?.nodes.forEach(node => {
+              node?.disconnect()
+            })
+          }
+        })
+
+        if (setPeerRoom) {
+          setPeerRoom({})
+        }
+        if (setRemoteStreams) {
+          setRemoteStreams({})
+        }
+        if (setIdAwaiter) {
+          setIdAwaiter([])
+        }
+        peerRef.current = null
+      }
+    }
+
     const initFunc = async () => {
+      cleanUp()
       if (signal.aborted) return
 
       if (!roomId) return
-      if (webSocketRoom.current?.readyState === WebSocket.OPEN) return
 
       if (isInitilizing.current) return
       isInitilizing.current = true
@@ -143,41 +183,11 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
         isInitilizing.current = false
       }
     }
+
     initFunc()
     return () => {
       abortController.abort()
-      clearInterval(interval)
-      if (webSocketRoom.current?.readyState === WebSocket.OPEN) {
-        webSocketRoom.current?.close()
-      }
-
-      if (peerRoom) {
-        Object.entries(peerRoom).forEach(([peerId, peer]) => {
-          peer.getSenders().forEach(sender => {
-            if (sender.track && sender.track.kind === 'audio') {
-              sender.track.stop()
-              peer.removeTrack(sender)
-            }
-          })
-
-          peer.ontrack = null
-          peer.onicecandidate = null
-          peer.close()
-
-          if (remoteStream[peerId]?.nodes) {
-            remoteStream[peerId]?.nodes.forEach(node => {
-              node?.disconnect()
-            })
-          }
-        })
-
-        if (setPeerRoom) {
-          setPeerRoom({})
-        }
-        if (setRemoteStreams) {
-          setRemoteStreams({})
-        }
-      }
+      cleanUp()
     }
   }, [roomId, userId])
 
