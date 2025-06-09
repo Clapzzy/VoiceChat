@@ -376,10 +376,6 @@ async function handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteSt
           transceiver.stop()
         })
 
-        peerRef.current[message.from]?.ontrack = null
-        peerRef.current[message.from]?.onicecandidate = null
-        peerRef.current[message.from]?.onnegotiationneeded = null
-
         peerRef.current[message.from]?.close()
         if (setPeerRoom) {
           setPeerRoom(prev => {
