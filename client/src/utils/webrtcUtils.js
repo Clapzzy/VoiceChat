@@ -166,7 +166,7 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
   console.log("creating a peer with the id : ", userInfo.userId)
   const newConnection = creatPeerConnection()
 
-  newConnection.polite = currentUserId.current > userInfo.userId
+  newConnection.polite = String(currentUserId.current) > String(userInfo.userId)
 
   addStreamToPeer(newConnection, microphoneStreamRef)
 
@@ -186,6 +186,11 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
   newConnection.onnegotiationneeded = async () => {
     if (isNegotiating || newConnection.isNegotiating) {
       console.log("Skipping concurent negotiation")
+      return
+    }
+
+    if(newConnection.polite){
+      console.log("Polite peer, not initiating negotiation")
       return
     }
 
@@ -256,16 +261,6 @@ if (newConnection.signalingState !== 'stable') {
     [userInfo.userId]: newConnection
   }))
   console.log(newConnection)
-
-  if (!newConnection.polite && newConnection.signalingState === 'stable') {
-    setTimeout(() => {
-      createPeerOffer(
-        newConnection,
-        webSocketRoom,
-        userInfo.userId
-      )
-    }, 100)
-  }
 
 }
 
