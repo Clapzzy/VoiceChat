@@ -43,7 +43,7 @@ if(testMod && !testAudioRef.current){
   originalMicStreamRef.current = microphoneStreamRef.current
    testAudioRef.current = createTestAudioStream(audioContextRef,440, 3)
 
-   microphoneStreamRef.current = testAudioRef.current
+   microphoneStreamRef.current = testAudioRef.current.stream
    console.log("Test audio started - 440hz sin wave")
 
 }else if(!testMod && testAudioRef.current){
