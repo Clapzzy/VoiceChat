@@ -1,7 +1,47 @@
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
-
+export const createTestAudioStream = (audioContext, frequency = 440, volume = 0.1) => {
+  try {
+    const oscillator = audioContext.current.createOscillator()
+    const gainNode = audioContext.current.createGain()
+    const mediaStreamDestination = audioContext.current.createMediaStreamDestination()
+    
+    oscillator.type = 'sine'
+    oscillator.frequency.setValueAtTime(frequency, audioContext.current.currentTime)
+    gainNode.gain.setValueAtTime(volume, audioContext.current.currentTime)
+    
+    oscillator.connect(gainNode)
+    gainNode.connect(mediaStreamDestination)
+    
+    // Also connect to speakers so you can hear it locally (optional)
+    gainNode.connect(audioContext.current.destination)
+    
+    // Start the oscillator
+    oscillator.start()
+    
+    console.log(`Created test audio stream: ${frequency}Hz sine wave`)
+    
+    return {
+      stream: mediaStreamDestination.stream,
+      oscillator,
+      gainNode,
+      stop: () => {
+        try {
+          oscillator.stop()
+          oscillator.disconnect()
+          gainNode.disconnect()
+          console.log("Test audio stopped and disconnected")
+        } catch (error) {
+          console.error("Error stopping test audio:", error)
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Error creating test audio stream:", error)
+    return null
+  }
+}
 export const creatPeerConnection = () => {
   const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
   return new RTCPeerConnection(config)

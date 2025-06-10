@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react"
 import { useState } from "react"
-import { initializePeerConnection, setupWebSocket } from "./webrtcUtils"
+import { createTestAudioStream, initializePeerConnection, setupWebSocket } from "./webrtcUtils"
 
 const wsUrl = "wss://martinkurtev.com/ws";
 
@@ -17,6 +17,10 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
   //used as a less advaced golang channel to wait for new peers
   const [idAwaiter, setIdAwaiter] = useState([])
   const [micStream, setMicStream] = useState()
+
+  const testAudioRef = useRef(null)
+  const originalMicStreamRef = useRef(null)
+  const [testMod, setTestMod]= useState(true)
   //isnt used anywhere
   const userId = useRef()
 
@@ -31,6 +35,24 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
   useEffect(() => {
     peerRef.current = peerRoom
   }, [peerRoom])
+
+useEffect(()=>{
+if(!audioContextRef.current)return
+
+if(testMod && !testAudioRef.current){
+  originalMicStreamRef.current = microphoneStreamRef.current
+   testAudioRef.current = createTestAudioStream(audioContextRef,440, 3)
+
+   microphoneStreamRef.current = testAudioRef.current
+   console.log("Test audio started - 440hz sin wave")
+
+}else if(!testMod && testAudioRef.current){
+  testAudioRef.current.stop()
+  testAudioRef.current = null
+
+  microphoneStreamRef.current = originalMicStreamRef.current
+}
+},[testMod,audioContextRef,microphoneStreamRef])
 
   //when adding a user
   useEffect(() => {
