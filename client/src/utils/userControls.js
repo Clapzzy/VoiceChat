@@ -9,58 +9,89 @@ export function useSetUpAudioMic() {
   const gainRef = useRef(null)
 
   //needed to choose a mic
-  const [microphoneDevices, setMicrophoneDevices] = useState(null)
+  const [microphoneDevices, setMicrophoneDevices] = useState([])
   const [currentMic, setCurrentMic] = useState(null)
+  const [permissionGranted, setPermissionGranted] = useState(false)
+
+  const requestMicPermission = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+
+      stream.getTracks().forEach(track => track.stop())
+
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const audioDevices = devices.filter((device) => device.kind === "audioinput")
+
+      setMicrophoneDevices(audioDevices)
+      setPermissionGranted(true)
+
+      if (audioDevices.length > 0 && currentMic === null) {
+        console.log("didnt find any audio devices")
+        setCurrentMic(0)
+      }
+    } catch (error) {
+      console.error("MicrophonePermission denied : ", error)
+
+      setMicrophoneDevices([{ deviceId: 'default', label: 'Default Microphone' }])
+      setCurrentMic(0)
+    }
+  }
 
   useEffect(() => {
     audioContextRef.current = new AudioContext()
-
-
-
-    navigator.mediaDevices.enumerateDevices()
-      .then((devices) => {
-        const audioDevices = devices.filter((device) => device.kind === "audioinput")
-        setMicrophoneDevices(audioDevices)
-        if (!currentMic) {
-          setCurrentMic(0)
-        }
-      })
-
     audioContextRef.current.suspend()
+
+
+    requestMicPermission()
+
     return () => {
-      audioContextRef.current.close()
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close()
+      }
     }
   }, [])
 
   // sets up mic and its gain node
   useEffect(() => {
     if (!microphoneDevices?.[currentMic]) return
+
     let mic = microphoneDevices[currentMic]
     let micNode
+
     if (!mic) return
 
     if (microphoneStreamRef.current) {
       microphoneStreamRef.current.getTracks().forEach(track => track.stop())
     }
 
-    navigator.mediaDevices.getUserMedia({ audio: { deviceId: { ideal: mic.deviceId } }, video: false })
-      .then((mediaStream) => {
-        if (audioContextRef.current.state !== 'closed') {
-          gainRef.current = audioContextRef.current.createGain()
+    const setupMicrophone = async () => {
+      try {
+        const constraints = {
+          audio: mic.deviceId === 'default'
+            ? true
+            : { deviceId: { ideal: mic.deviceId } },
+          video: false
         }
 
-        const destinationNode = audioContextRef.current.createMediaStreamDestination()
-        gainRef.current.gain.value = 1;
-        micNode = audioContextRef.current.createMediaStreamSource(mediaStream)
+        const mediaStream = await navigator.mediaDevices.getUserMedia(constraints)
 
-        micNode.connect(gainRef.current)
-        gainRef.current.connect(destinationNode)
-        microphoneStreamRef.current = destinationNode.stream
+        if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+          gainRef.current = audioContextRef.current.createGain()
 
-      })
-      .catch((err) => {
-        console.error("Got an error :", err)
-      })
+          const destinationNode = audioContextRef.current.createMediaStreamDestination()
+          gainRef.current.gain.value = 1;
+          micNode = audioContextRef.current.createMediaStreamSource(mediaStream)
+
+          micNode.connect(gainRef.current)
+          gainRef.current.connect(destinationNode)
+          microphoneStreamRef.current = destinationNode.stream
+        }
+      } catch (error) {
+        console.log('Error setting up the microphone', err)
+      }
+    }
+
+    setupMicrophone()
 
     return () => {
       if (micNode) {
