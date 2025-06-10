@@ -2,7 +2,7 @@
 
 ## ⚠️ **Work in Progress** ⚠️
 
-This is still very much a work in progress! If you run into connection issues or things just don’t work, it’s probably because **I haven’t set up a STUN server yet**. WebRTC needs that to work properly across different networks, so yeah… expect some problems for now.
+This is still very much a work in progress! If you run into connection issues or things just don’t work, it’s probably because **I haven’t set up a TURN server yet**. WebRTC needs that to work properly across different networks, so yeah… expect some problems for now.
 
 -----
 
@@ -26,7 +26,7 @@ A Discord-like voice chat app where you can talk with people and send messages. 
 
 ## Known Issues & Limitations
 
-- **No STUN server** - This is the big one. Connections will probably fail if you’re on different networks
+- **No TURN server** - This is the big one. Connections will probably fail if you’re on different networks
 - **Network issues** - Might not work if you’re behind certain routers/firewalls
 - **Audio quality** - Haven’t optimized this yet
 - **Error handling** - Pretty basic right now, things might just break
@@ -38,4 +38,3 @@ You’ll need Node.js and Go installed. Frontend runs on vite and if you want to
 
 -----
 
-*Will probably add a STUN server and fix stuff eventually…*
