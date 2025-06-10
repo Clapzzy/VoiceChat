@@ -34,7 +34,7 @@ A Discord-like voice chat app where you can talk with people and send messages. 
 
 ## Running it
 
-You’ll need Node.js and Go installed. Frontend runs on React dev server, backend is just `go run server.go`. Messages and voice signaling go through WebSockets, actual voice is peer-to-peer.
+You’ll need Node.js and Go installed. Frontend runs on vite and if you want to run the development server you would need to use `sudo npm run dev`, backend is just `go run server.go`. Messages and voice signaling go through WebSockets, actual voice is peer-to-peer.
 
 -----
 
