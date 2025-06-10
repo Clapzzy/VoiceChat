@@ -1,7 +1,33 @@
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
-
+export const createTestAudioStream = (audioContextRef, frequency = 440, volume = 0.1) => {
+  const oscillator = audioContextRef.current.createOscillator()
+  const gainNode = audioContextRef.current.createGain()
+  
+  oscillator.type = 'sine'
+  oscillator.frequency.setValueAtTime(frequency, audioContextRef.current.currentTime)
+  gainNode.gain.setValueAtTime(volume, audioContextRef.current.currentTime)
+  
+  oscillator.connect(gainNode)
+  gainNode.connect(audioContextRef.current.destination)
+  
+  const mediaStreamDestination = audioContextRef.current.createMediaStreamDestination()
+  gainNode.connect(mediaStreamDestination)
+  
+  oscillator.start()
+  
+  return {
+    stream: mediaStreamDestination.stream,
+    oscillator,
+    gainNode,
+    stop: () => {
+      oscillator.stop()
+      oscillator.disconnect()
+      gainNode.disconnect()
+    }
+  }
+}
 export const creatPeerConnection = () => {
   const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
   return new RTCPeerConnection(config)
@@ -78,7 +104,6 @@ export const setupWebSocket = async (wsUrl, initObj, idAwaiter, peerRef, setRemo
 export const createPeerOffer = async (peerConnection, webSocket, clientToSendTo) => {
   try {
     if (peerConnection.signalingState !== 'stable') {
-      await peerConnection.setLocalDescription({ type: 'rollback' })
       console.warn("Cannot make an offer in current peer state. Initilizing rollback. Peer signal state :", peerConnection.signalingState)
     }
 
@@ -167,7 +192,7 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
   console.log("creating a peer with the id : ", userInfo.userId)
   const newConnection = creatPeerConnection()
 
-  newConnection.polite = currentUserId.current > userInfo.userId
+  newConnection.polite = String(currentUserId.current) > String(userInfo.userId)
 
   addStreamToPeer(newConnection, microphoneStreamRef)
 
@@ -185,10 +210,23 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
 
   let isNegotiating = false
   newConnection.onnegotiationneeded = async () => {
-    if (isNegotiating) {
+    if (isNegotiating || newConnection.isNegotiating) {
       console.log("Skipping concurent negotiation")
       return
     }
+
+    if(newConnection.polite){
+      console.log("Polite peer, not initiating negotiation")
+      return
+    }
+
+    await sleep(Math.random() * 100)
+
+if (newConnection.signalingState !== 'stable') {
+    console.log("Skipping negotiation - not in stable state:", newConnection.signalingState)
+    return
+  }
+
     isNegotiating = true
     try {
       if (!newConnection.polite) {
@@ -250,16 +288,6 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
   }))
   console.log(newConnection)
 
-  if (!newConnection.polite && newConnection.signalingState === 'stable') {
-    setTimeout(() => {
-      createPeerOffer(
-        newConnection,
-        webSocketRoom,
-        userInfo.userId
-      )
-    }, 100)
-  }
-
 }
 
 const handleOffer = async (offer, peerRef, webSocket, currentUserId) => {
@@ -284,19 +312,21 @@ const handleOffer = async (offer, peerRef, webSocket, currentUserId) => {
       sdp: offer.sdp
     })
 
-    if (peer.signalingState !== 'stable') {
+    if (peer.signalingState === 'have-local-offer') {
       if (peer.polite) {
         console.log("Polite peer. roolback")
-        await Promise.all([
-          peer.setLocalDescription({ type: "rollback" }),
-          peer.setRemoteDescription(offerDescription)
-        ])
+        await peer.setLocalDescription({ type: "rollback" }),
+        await peer.setRemoteDescription(offerDescription)
+
       } else {
         console.warn("Impolite peer. Ignoring offer")
         return
       }
-    } else {
+    }else if(peer.signalingState === 'stable'){
       await peer.setRemoteDescription(offerDescription)
+    } else {
+    console.warn("Unexpected singlaing state for offer: ", peer.signalingState)
+    return
     }
 
     const answer = await peer.createAnswer();
@@ -326,6 +356,7 @@ const handleOffer = async (offer, peerRef, webSocket, currentUserId) => {
       sdp: peer.localDescription.sdp,
       to: offer.from
     }))
+
   } catch (error) {
     console.error("Omffer handling failed:", error);
     if (error.name === 'InvalidStateError') {
