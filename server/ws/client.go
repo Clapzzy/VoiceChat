@@ -20,7 +20,7 @@ type UpdateMessage struct {
 	Message  string `json:"message,omitempty"`
 	PfpNum   int    `json:"pfpNum"`
 	Username string `json:"username"`
-	ClientId string `json:"ClientId,omitempty"`
+	ClientId string `json:"clientId,omitempty"`
 	RoomId   string `json:"roomId,omitempty"`
 }
 
