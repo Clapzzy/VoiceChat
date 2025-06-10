@@ -8,8 +8,9 @@ export function TextChat({ currentChat, chatMessages, sendMessage, channelInfo, 
       e.preventDefault()
       const trimmedMessage = message.trim()
       if (trimmedMessage) {
-        sendMessage(trimmedMessage, channelInfo.find(value => value.name == currentChat))
+        sendMessage(trimmedMessage, channelInfo.find(value => value.name == currentChat)?.id)
         setMessage('')
+        e.target.style.height = '56px'
       }
     }
   }
@@ -27,21 +28,24 @@ export function TextChat({ currentChat, chatMessages, sendMessage, channelInfo, 
       </div>
       {/*the container for the comments*/}
       <div className="flex flex-col min-w-0 h-full gap-3 pt-4 pb-6 pl-6 pr-2">
-        {chatMessages && chatMessages?.[currentChat]?.map((message) => (
-          <div className="flex flex-row gap-1.5 min-w-0 ">
-            <img
-              className="w-[40px] h-[40px]"
-              alt="profile picture"
-              src={imageUrls[message.pfpNum]}
-            />
-            <div className="flex flex-col gap-1 flex-auto min-w-0">
-              <p className="text-[16px] color-[#284B62]">{message.username}</p>
-              <p className="text-base break-words">
-                {message.message}
-              </p>
+        {chatMessages && chatMessages?.[channelInfo.find(value => value.name == currentChat)?.id]?.map((message) => {
+          //malumno id 
+          return (
+            <div key={message} className="flex flex-row gap-1.5 min-w-0 ">
+              <img
+                className="w-[40px] h-[40px]"
+                alt="profile picture"
+                src={imageUrls[message.pfpNum]}
+              />
+              <div className="flex flex-col gap-1 flex-auto min-w-0">
+                <p className="text-[16px] color-[#284B62]">{message.username}</p>
+                <p className="text-base break-words">
+                  {message.message}
+                </p>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
       {/* chat text box */}
       <div className='fixed z-20 bottom-0 left-96 right-0 pb-4 px-3'>

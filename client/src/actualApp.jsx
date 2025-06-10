@@ -51,10 +51,10 @@ export function WebrtcChat({ userInfo }) {
 
   const imageUrls = usePfpUrls()
   const [audioContextRef, microphoneStreamRef, gainRef, [setCurrentMic, currentMic, microphoneDevices]] = useSetUpAudioMic()
-  const [remoteStream] = useSetUpWebrtc(voiceChannelInfo.find(value => value.name === currentVoiceChat)?.id, userInfo, audioContextRef, microphoneStreamRef)
+  const [remoteStream, userId] = useSetUpWebrtc(voiceChannelInfo.find(value => value.name === currentVoiceChat)?.id, userInfo, audioContextRef, microphoneStreamRef)
   const [chatMessages, voiceParticipants, sendMessage] = useUpdateSocket(chatIds, voiceChatIds, userInfo)
   //TODO: add sound effects
-
+  //should add context instead of prop drilling 
 
   return (
     <>
@@ -78,6 +78,7 @@ export function WebrtcChat({ userInfo }) {
               {/* Voice channels */}
 
               <VoiceChannelGroup
+                userId={userId}
                 remoteStream={remoteStream}
                 voiceParticipants={voiceParticipants}
                 imageUrls={imageUrls}
@@ -109,7 +110,6 @@ export function WebrtcChat({ userInfo }) {
           chatMessages={chatMessages}
           sendMessage={sendMessage}
         />
-
       </div>
     </>
   )

@@ -27,7 +27,7 @@ export function TextMessageChannel({ setCurrentChannel, currentChannel, channelI
   )
 }
 
-export function VoiceChatChannel({ voiceParticipants, voiceChatName, voiceChatIcon, setCurrentVoice, currentVoice, userInfo, imageUrls, remoteStream }) {
+export function VoiceChatChannel({ userId, voiceParticipants, voiceChatName, voiceChatIcon, setCurrentVoice, currentVoice, userInfo, imageUrls, remoteStream }) {
   const [isHovered, setIsHovered] = useState(false)
   const backgroundColor = currentVoice === voiceChatName ? '#C1CBD1' : isHovered ? '#d1d9db' : '#dee8ea'
 
@@ -59,31 +59,23 @@ export function VoiceChatChannel({ voiceParticipants, voiceChatName, voiceChatIc
       </div>
       {/* voice chat participants */}
       {voiceParticipants?.length > 0 &&
-        voiceParticipants.map(participant => (
-          <div key={participant.username} className='gap-2 pl-3 my-2'>
-            <div className='flex flex-row gap-2 items-center'>
-              <img
-                src={imageUrls[participant.pfpNum]}
-                alt='profile picture'
-                className='w-[24px] h-[24px]'
-              />
-              <p className='text-[16px]'>{participant.username}</p>
-            </div>
-          </div>
-        ))
+        voiceParticipants.map(participant => {
+          return (
+            (
+              <div key={participant.userId} className='gap-2 pl-3 my-2'>
+                <div className='flex flex-row gap-2 items-center'>
+                  <img
+                    src={imageUrls[participant.pfpNum]}
+                    alt='profile picture'
+                    className='w-[24px] h-[24px]'
+                  />
+                  <p className='text-[16px]'>{participant.username}</p>
+                </div>
+              </div>
+            )
+          )
+        })
       }
-      {currentVoice === voiceChatName && (
-        <div className='gap-2 pl-3 my-2'>
-          <div className='flex flex-row gap-2 items-center'>
-            <img
-              src={imageUrls[userInfo.pfpNum]}
-              alt='profile picture'
-              className='w-[24px] h-[24px]'
-            />
-            <p className='text-[16px]'>{userInfo.username}</p>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

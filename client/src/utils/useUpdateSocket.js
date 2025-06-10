@@ -17,16 +17,16 @@ export function useUpdateSocket(chatIds, voiceIds, userInfo) {
 
       setChatMessages((prev) => ({
         ...prev,
-        [message.roomId]: [
-          ...prev[message.roomId],
-          { message: message.message, pfpNum: userInfo.pfpNum, username: userInfo.username }
+        [roomId]: [
+          ...(prev[roomId] || []),
+          { message: message, pfpNum: userInfo.pfpNum, username: userInfo.username }
         ]
       }))
 
     } else {
       console.warn("update socket still not open")
     }
-  }, [])
+  }, [userInfo])
 
   useEffect(() => {
     const webSocket = new WebSocket(`${wsUrl}`)
@@ -48,31 +48,34 @@ export function useUpdateSocket(chatIds, voiceIds, userInfo) {
 
       webSocket.addEventListener("message", (event) => {
         const message = JSON.parse(event.data)
+        console.log(message)
         switch (message.type) {
           case 'join':
+
             setVoiceParticipants((prev) => ({
               ...prev,
               [message.roomId]: [
+                ...(prev[message.roomId] || []),
                 {
                   pfpNum: message.pfpNum,
                   username: message.username,
                   userId: message.clientId
                 },
-                ...prev[message.roomId]
               ]
             }))
             break
           case 'leave':
             setVoiceParticipants((prev) => ({
               ...prev,
-              [message.roomId]: prev[message.roomId].filter((item) => item.userId !== message.clientId)
+              [message.roomId]:
+                (prev[message.roomId] || []).filter((item) => item.userId !== message.clientId)
             }))
             break
           case 'message':
             setChatMessages((prev) => ({
               ...prev,
               [message.roomId]: [
-                ...prev[message.roomId],
+                ...(prev[message.roomId] || []),
                 { message: message.message, pfpNum: message.pfpNum, username: message.username }
               ]
             }))
@@ -82,7 +85,12 @@ export function useUpdateSocket(chatIds, voiceIds, userInfo) {
 
     }, { once: true })
 
-  }, [])
+    return () => {
+      webSocketRef.current.close()
+      setChatMessages({})
+      setVoiceParticipants({})
+    }
+  }, [chatIds, voiceIds, userInfo])
 
   return [chatMessages, voiceParticipants, sendMessage]
 }

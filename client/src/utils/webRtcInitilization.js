@@ -5,9 +5,6 @@ import { initializePeerConnection, setupWebSocket } from "./webrtcUtils"
 const wsUrl = "wss://martinkurtev.com/ws";
 
 export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStreamRef) {
-  console.log(roomId)
-  //should just return a bunch of null representing the values that should be ruturned
-
   //internal only (private)
   //
   const webSocketRoom = useRef()
@@ -211,8 +208,8 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
     }
   }, [roomId, userInfo])
 
-  if (!roomId) return [remoteStream]
+  if (!roomId) return [remoteStream, userId]
   //inits webSocket conn
 
-  return [remoteStream]
+  return [remoteStream, userId]
 }

@@ -14,7 +14,7 @@ export function MessageChannelGroup({ setCurrentChannel, currentChannel, channel
 
   )
 }
-export function VoiceChannelGroup({ userInfo, voiceParticipants, setCurrentVoice, currentVoice, voiceChannelInfo, imageUrls, remoteStream }) {
+export function VoiceChannelGroup({ userId, userInfo, voiceParticipants, setCurrentVoice, currentVoice, voiceChannelInfo, imageUrls, remoteStream }) {
 
   return (
     <div className=' w-full flex flex-col gap-3 mt-3'>
@@ -24,6 +24,7 @@ export function VoiceChannelGroup({ userInfo, voiceParticipants, setCurrentVoice
         {voiceChannelInfo.map((value) => (
           <VoiceChatChannel
             key={value.name}
+            userId={userId}
             remoteStream={remoteStream}
             voiceParticipants={voiceParticipants?.[value.id]}
             imageUrls={imageUrls}

@@ -82,6 +82,13 @@ export const createPeerOffer = async (peerConnection, webSocket, clientToSendTo)
       console.warn("Cannot make an offer in current peer state. Initilizing rollback. Peer signal state :", peerConnection.signalingState)
     }
 
+    if (peerConnection.isNegotiating) {
+      console.warn('Already negotiating, skipping creation')
+      return false
+    }
+
+    peerConnection.isNegotiating = true
+
     const existingTransceiver = peerConnection.getTransceivers()
     if (existingTransceiver.length === 0) {
       peerConnection.addTransceiver('audio', { direction: 'sendrecv' })
@@ -101,6 +108,7 @@ export const createPeerOffer = async (peerConnection, webSocket, clientToSendTo)
 
   } catch (error) {
     console.error("Offer creating failed :", error.message)
+    peerConnection.isNegotiating = false
 
     if (error.toString().includes('m-lines') || error.toString().includes('m-line')) {
       console.warn("resetting media. m-line inconsistency detected")
@@ -109,10 +117,16 @@ export const createPeerOffer = async (peerConnection, webSocket, clientToSendTo)
         transceiver.stop()
       })
 
+      await peerConnection.setLocalDescription({ type: 'rollback' })
+
       setTimeout(() => {
         peerConnection.addTransceiver('audio', { direction: 'sendrecv' })
       }, 100)
     }
+  } finally {
+    setTimeout(() => {
+      peerConnection.isNegotiating = false
+    }, 1000)
   }
 }
 
