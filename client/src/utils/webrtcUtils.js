@@ -230,6 +230,40 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
     }
   }
 
+  setupRemoteStreamHandler(newConnection, (stream) => {
+    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+      console.warn("Audio context in undefined or closed")
+      return
+    }
+
+    if (!stream || !stream.getAudioTracks || stream.getAudioTracks().length === 0) {
+      console.warn("Invalid stream or no audio tracks available")
+      return
+    }
+    try {
+
+      const source = audioContextRef.current.createMediaStreamSource(stream)
+      let gainNode = audioContextRef.current.createGain();
+      gainNode.gain.value = 1
+
+      source.connect(gainNode)
+      gainNode.connect(audioContextRef.current.destination)
+
+      setRemoteStreams(prev => {
+        return ({
+          ...prev, [userInfo.userId]: {
+            username: userInfo.username,
+            pfpNum: userInfo.pfpNum,
+            stream: stream,
+            nodes: { source, gainNode }
+          }
+        })
+      })
+    } catch (error) {
+      console.error("Error while setting up auido context for remote stream: ", error)
+    }
+  })
+
   let isNegotiating = false
   newConnection.onnegotiationneeded = async () => {
     if (isNegotiating) {
@@ -246,40 +280,6 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
       console.log("Polite peer, not initiating negotiation")
       return
     }
-
-    setupRemoteStreamHandler(newConnection, (stream) => {
-      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-        console.warn("Audio context in undefined or closed")
-        return
-      }
-
-      if (!stream || !stream.getAudioTracks || stream.getAudioTracks().length === 0) {
-        console.warn("Invalid stream or no audio tracks available")
-        return
-      }
-      try {
-
-        const source = audioContextRef.current.createMediaStreamSource(stream)
-        let gainNode = audioContextRef.current.createGain();
-        gainNode.gain.value = 1
-
-        source.connect(gainNode)
-        gainNode.connect(audioContextRef.current.destination)
-
-        setRemoteStreams(prev => {
-          return ({
-            ...prev, [userInfo.userId]: {
-              username: userInfo.username,
-              pfpNum: userInfo.pfpNum,
-              stream: stream,
-              nodes: { source, gainNode }
-            }
-          })
-        })
-      } catch (error) {
-        console.error("Error while setting up auido context for remote stream: ", error)
-      }
-    })
 
     isNegotiating = true
     try {
