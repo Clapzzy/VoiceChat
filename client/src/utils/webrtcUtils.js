@@ -1,35 +1,56 @@
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
-export const createTestAudioStream = (audioContextRef, frequency = 440, volume = 0.1) => {
-  const oscillator = audioContextRef.current.createOscillator()
-  const gainNode = audioContextRef.current.createGain()
-  
-  oscillator.type = 'sine'
-  oscillator.frequency.setValueAtTime(frequency, audioContextRef.current.currentTime)
-  gainNode.gain.setValueAtTime(volume, audioContextRef.current.currentTime)
-  
-  oscillator.connect(gainNode)
-  gainNode.connect(audioContextRef.current.destination)
-  
-  const mediaStreamDestination = audioContextRef.current.createMediaStreamDestination()
-  gainNode.connect(mediaStreamDestination)
-  
-  oscillator.start()
-  
-  return {
-    stream: mediaStreamDestination.stream,
-    oscillator,
-    gainNode,
-    stop: () => {
-      oscillator.stop()
-      oscillator.disconnect()
-      gainNode.disconnect()
-    }
+
+const hashString = (str) => {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash
   }
+  return hash
+}
+
+export const createTestAudioStream = async (microphoneRef, audioContextRef, frequency = 440, volume = 0.1) => {
+  if (!audioContextRef.current) {
+    console.error("AudioContext does not exist");
+  }
+
+  console.log("Test")
+  const ctx = audioContextRef?.current
+  const oscillator = ctx.createOscillator()
+  const gainNode = ctx.createGain()
+  const mediaStreamDestination = ctx.createMediaStreamDestination()
+
+  oscillator.type = 'sine'
+  oscillator.frequency.setValueAtTime(frequency, ctx.currentTime)
+  gainNode.gain.setValueAtTime(volume, ctx.currentTime)
+
+  oscillator.connect(gainNode)
+  //gainNode.connect(ctx.destination)
+  gainNode.connect(mediaStreamDestination)
+  microphoneRef.current = mediaStreamDestination.stream
+
+  oscillator.start()
+
+  return [oscillator, gainNode]
 }
 export const creatPeerConnection = () => {
-  const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+  const config = {
+    iceServers: [
+      {
+        urls: [
+          'stun:martinkurtev.com:3478',
+          'turn:martinkurtev.com:3478',
+          'turns:martinkurtev.com:5349'
+        ],
+        username: 'webrtc',
+        credential: 'password1'
+      }
+    ],
+    iceCandidatePoolSize: 10
+  };
   return new RTCPeerConnection(config)
 }
 
@@ -70,9 +91,10 @@ export const addStreamToPeer = (peerConnection, stream) => {
   }
 }
 
-export const setupWebSocket = async (wsUrl, initObj, idAwaiter, peerRef, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef, currentUserId) => {
+export const setupWebSocket = async (wsUrl, initObj, idAwaiter, peerRef, setRemoteStreams, setPeerRoom) => {
   const webSocket = new WebSocket(`${wsUrl}`)
 
+  let currentUserId
   let resolveId
   let idPromise = new Promise((res) => resolveId = res)
 
@@ -82,13 +104,14 @@ export const setupWebSocket = async (wsUrl, initObj, idAwaiter, peerRef, setRemo
     webSocket.addEventListener("message", (event) => {
       if (webSocket.readyState !== WebSocket.OPEN) return
       const userIds = JSON.parse(event.data)
-      resolveId(userIds[0])
+      handleNewIds(userIds, idAwaiter, peerRef, userIds[0])
+      currentUserId = userIds[0].userId
+      resolveId(userIds[0].userId)
       userIds.shift()
-      handleNewIds(userIds, idAwaiter, peerRef, currentUserId)
 
       webSocket.addEventListener("message", (event) => {
         const message = JSON.parse(event.data)
-        handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteStreams, setPeerRoom, microphoneStreamRef, audioContextRef, currentUserId)
+        handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteStreams, setPeerRoom, currentUserId)
       })
 
     }, { once: true })
@@ -157,9 +180,13 @@ export const createPeerOffer = async (peerConnection, webSocket, clientToSendTo)
 
 export const setupIceCandidateHandler = (peerConnection, webSocket, clientToSendTo) => {
   peerConnection.onicecandidate = (event) => {
-    if (event.candidate &&
-      peerConnection.iceGatheringState === 'complete' &&
-      peerConnection.signalingState === 'stable') {
+    if (event.candidate && peerConnection.localDescription) {
+      console.log("sending candidate with event.candidate : ", event.candidate)
+      console.log("what i am sending from the webSocket : ", JSON.stringify({
+        type: 'candidate',
+        candidate: event.candidate,
+        to: clientToSendTo
+      }))
       webSocket.send(JSON.stringify({
         type: 'candidate',
         candidate: event.candidate,
@@ -182,8 +209,8 @@ export const setupRemoteStreamHandler = (peerConnection, setRemoteStream) => {
     }
   }
 }
-
 export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, setPeerRoom, webSocketRoom, microphoneStreamRef, audioContextRef, currentUserId) => {
+
   if (peerRef?.current?.[userInfo.userId]) {
     console.warn("Peer connection already exists for: ", userInfo.userId)
     return
@@ -192,7 +219,8 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
   console.log("creating a peer with the id : ", userInfo.userId)
   const newConnection = creatPeerConnection()
 
-  newConnection.polite = String(currentUserId.current) > String(userInfo.userId)
+  console.log(`Peer id id be like : ${currentUserId.current} and user id ${userInfo.userId}`,)
+  newConnection.polite = hashString(currentUserId.current) > hashString(userInfo.userId)
 
   addStreamToPeer(newConnection, microphoneStreamRef)
 
@@ -210,23 +238,22 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
 
   let isNegotiating = false
   newConnection.onnegotiationneeded = async () => {
-    if (isNegotiating || newConnection.isNegotiating) {
+    if (isNegotiating) {
       console.log("Skipping concurent negotiation")
       return
     }
 
-    if(newConnection.polite){
+    if (newConnection.signalingState !== 'stable') {
+      console.log("Skipping negotiation - not in stable state:", newConnection.signalingState)
+      return
+    }
+
+    if (newConnection.polite) {
       console.log("Polite peer, not initiating negotiation")
       return
     }
 
-    await sleep(Math.random() * 100)
-
-if (newConnection.signalingState !== 'stable') {
-    console.log("Skipping negotiation - not in stable state:", newConnection.signalingState)
-    return
-  }
-
+    console.log("userid Be like : ", userInfo.userId)
     isNegotiating = true
     try {
       if (!newConnection.polite) {
@@ -239,9 +266,12 @@ if (newConnection.signalingState !== 'stable') {
     } catch (error) {
       console.error('Negotiation error: ', error)
     } finally {
-      isNegotiating = false
+      setTimeout(() => {
+        isNegotiating = false
+      }, 1000)
     }
   }
+
   setupRemoteStreamHandler(newConnection, (stream) => {
     if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
       console.warn("Audio context in undefined or closed")
@@ -290,7 +320,7 @@ if (newConnection.signalingState !== 'stable') {
 
 }
 
-const handleOffer = async (offer, peerRef, webSocket, currentUserId) => {
+const handleOffer = async (offer, peerRef, webSocket) => {
   let timeWaited = 0
   console.log("Handling offer from: ", offer.from)
 
@@ -315,18 +345,18 @@ const handleOffer = async (offer, peerRef, webSocket, currentUserId) => {
     if (peer.signalingState === 'have-local-offer') {
       if (peer.polite) {
         console.log("Polite peer. roolback")
-        await peer.setLocalDescription({ type: "rollback" }),
+        await peer.setLocalDescription({ type: "rollback" })
         await peer.setRemoteDescription(offerDescription)
 
       } else {
         console.warn("Impolite peer. Ignoring offer")
         return
       }
-    }else if(peer.signalingState === 'stable'){
+    } else if (peer.signalingState === 'stable') {
       await peer.setRemoteDescription(offerDescription)
     } else {
-    console.warn("Unexpected singlaing state for offer: ", peer.signalingState)
-    return
+      console.warn("Unexpected singlaing state for offer: ", peer.signalingState)
+      return
     }
 
     const answer = await peer.createAnswer();
@@ -357,6 +387,8 @@ const handleOffer = async (offer, peerRef, webSocket, currentUserId) => {
       to: offer.from
     }))
 
+    console.log("Answer setn successfully to : ", offer.from)
+
   } catch (error) {
     console.error("Omffer handling failed:", error);
     if (error.name === 'InvalidStateError') {
@@ -380,12 +412,14 @@ const handleAnswer = async (message, peerRef) => {
       return;
     }
 
-    await peerRef.current[message.from].setRemoteDescription(new RTCSessionDescription({
+    await peer.setRemoteDescription(new RTCSessionDescription({
       type: 'answer',
       sdp: message.sdp
     }))
 
-    console.log("Answer successfully set")
+    await processQueuedCandidates(peer)
+
+    console.log("Answer successfully set !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
   } catch (error) {
     console.error("Falied ot set answer: ", error.message)
     if (peer.signalingState === 'stable') {
@@ -396,6 +430,7 @@ const handleAnswer = async (message, peerRef) => {
 
 const handleCandidate = async (message, peerRef) => {
   try {
+    console.log("candidate before parsing : ", message)
     let candidate
     if (typeof message.candidate === 'string') {
       candidate = JSON.parse(message.candidate)
@@ -403,9 +438,18 @@ const handleCandidate = async (message, peerRef) => {
       candidate = message.candidate
     }
 
+    console.log("candidate : ", candidate)
     const peer = peerRef.current[message.from]
-    if (candidate && peer && peer.remoteDescription) {
-      await peer.addIceCandidate(new RTCIceCandidate(candidate))
+
+    if (candidate && peer) {
+      if (peer.remoteDescription) {
+        await peer.addIceCandidate(new RTCIceCandidate(candidate))
+      } else {
+        if (!peer.pendingCandidates) {
+          peer.pendingCandidates = []
+        }
+        peer.pendingCandidates.push(candidate)
+      }
     }
 
   } catch (error) {
@@ -413,6 +457,20 @@ const handleCandidate = async (message, peerRef) => {
       error: error.message,
       recieved: message.candidate
     })
+  }
+}
+
+const processQueuedCandidates = async (peer) => {
+  if (peer.pendingCandidates && peer.remoteDescription) {
+    for (const candidate of peer.pendingCandidates) {
+      try {
+        await peer.addIceCandidate(new RTCIceCandidate(candidate))
+      } catch (error) {
+        console.error("Error adding queued candidate : ", error)
+      }
+    }
+
+    peer.pendingCandidates = []
   }
 }
 
@@ -463,7 +521,7 @@ async function handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteSt
         break
       case 'offer':
         //malumno
-        await handleOffer(message, peerRef, webSocket, currentUserId)
+        await handleOffer(message, peerRef, webSocket)
         break
       case 'answer':
         await handleAnswer(message, peerRef)

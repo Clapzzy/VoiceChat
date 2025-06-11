@@ -1,5 +1,6 @@
 import { useRef, useState } from "react"
 import { useEffect } from "react"
+import { createTestAudioStream } from "./webrtcUtils"
 
 export function useSetUpAudioMic() {
   //neded for webSocket set up
@@ -7,6 +8,7 @@ export function useSetUpAudioMic() {
   const microphoneStreamRef = useRef(null)
   //needed for setting mic volume
   const gainRef = useRef(null)
+  const oscilatorRef = useRef(null)
 
   //needed to choose a mic
   const [microphoneDevices, setMicrophoneDevices] = useState([])
@@ -38,7 +40,7 @@ export function useSetUpAudioMic() {
   }
 
   useEffect(() => {
-    audioContextRef.current = new AudioContext()
+    audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
     audioContextRef.current.suspend()
 
 
@@ -76,7 +78,8 @@ export function useSetUpAudioMic() {
         const mediaStream = await navigator.mediaDevices.getUserMedia(constraints)
 
         if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-          gainRef.current = audioContextRef.current.createGain()
+          /*
+          andinRef.current = audioContextRef.current.createGain()
 
           const destinationNode = audioContextRef.current.createMediaStreamDestination()
           gainRef.current.gain.value = 1;
@@ -85,9 +88,13 @@ export function useSetUpAudioMic() {
           micNode.connect(gainRef.current)
           gainRef.current.connect(destinationNode)
           microphoneStreamRef.current = destinationNode.stream
+          */
+          const returnArr = createTestAudioStream(microphoneStreamRef, audioContextRef, 440, 5)
+          oscilatorRef.current = returnArr[0]
+          gainRef.current = returnArr[1]
         }
       } catch (error) {
-        console.log('Error setting up the microphone', err)
+        console.log('Error setting up the microphone', error)
       }
     }
 

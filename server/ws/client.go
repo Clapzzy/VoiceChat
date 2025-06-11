@@ -33,7 +33,7 @@ type SignalMessage struct {
 	To        string `json:"to,omitempty"`
 	From      string `json:"from,omitempty"`
 	Type      string `json:"type,omitempty"`
-	Candidate string `json:"candidate,omitempty"`
+	Candidate any    `json:"candidate,omitempty"`
 	Sdp       string `json:"sdp,omitempty"`
 	Id        string `json:"id,omitempty"`
 	InitData  []any  `json:"initDate,omitempty"`

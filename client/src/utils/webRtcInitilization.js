@@ -20,7 +20,7 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
 
   const testAudioRef = useRef(null)
   const originalMicStreamRef = useRef(null)
-  const [testMod, setTestMod]= useState(true)
+  const [testMod, setTestMod] = useState(true)
   //isnt used anywhere
   const userId = useRef()
 
@@ -35,24 +35,6 @@ export function useSetUpWebrtc(roomId, userInfo, audioContextRef, microphoneStre
   useEffect(() => {
     peerRef.current = peerRoom
   }, [peerRoom])
-
-useEffect(()=>{
-if(!audioContextRef.current)return
-
-if(testMod && !testAudioRef.current){
-  originalMicStreamRef.current = microphoneStreamRef.current
-   testAudioRef.current = createTestAudioStream(audioContextRef,440, 3)
-
-   microphoneStreamRef.current = testAudioRef.current.stream
-   console.log("Test audio started - 440hz sin wave")
-
-}else if(!testMod && testAudioRef.current){
-  testAudioRef.current.stop()
-  testAudioRef.current = null
-
-  microphoneStreamRef.current = originalMicStreamRef.current
-}
-},[testMod,audioContextRef,microphoneStreamRef])
 
   //when adding a user
   useEffect(() => {
@@ -204,7 +186,7 @@ if(testMod && !testAudioRef.current){
           ...userInfo,
           roomId: roomId
         }
-        const [webSocket, userIdGiven] = await setupWebSocket(wsUrl, objectToSendToWs, setIdAwaiter, peerRef, setRemoteStreams, setPeerRoom, userId)
+        const [webSocket, userIdGiven] = await setupWebSocket(wsUrl, objectToSendToWs, setIdAwaiter, peerRef, setRemoteStreams, setPeerRoom)
         if (signal.aborted) {
           webSocket.close()
           return;

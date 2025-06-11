@@ -1,6 +1,7 @@
 import { useState, useRef } from "react"
 import { AnimatePresence, motion } from "motion/react"
 import { VolumeSlider } from "./volumeSlider"
+import { createTestAudioStream } from "../utils/webrtcUtils"
 
 export function UserControls({ profilePictureUrl, username, gainNodeRef, audioContextRef, currentMic, setCurrentMic, microphoneDevices, currentVoiceChat, setVoiceChat }) {
   const [muteMic, setMuteMic] = useState(false)
@@ -21,9 +22,11 @@ export function UserControls({ profilePictureUrl, username, gainNodeRef, audioCo
     if (!audioContextRef.current) return
 
     if (audioContextRef.current.state === 'suspended') {
+      console.log("Changing audioContextRef state from ", audioContextRef.current.state, " to running")
       await audioContextRef.current.resume()
       setMuteAudio(false)
     } else if (audioContextRef.current.state === 'running') {
+      console.log("Changing audioContextRef state from ", audioContextRef.current.state, " to suspended")
       await audioContextRef.current.suspend()
       setMuteAudio(true)
     }
