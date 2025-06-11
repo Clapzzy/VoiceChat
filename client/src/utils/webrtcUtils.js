@@ -216,7 +216,11 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
 
   newConnection.polite = hashString(currentUserId.current) < hashString(userInfo.userId)
 
-  addStreamToPeer(newConnection, microphoneStreamRef)
+  if (microphoneStreamRef.current) {
+    addStreamToPeer(newConnection, microphoneStreamRef)
+  } else {
+    console.log("mic not found to add to stream")
+  }
 
   newConnection.onsignalingstatechange = () => {
     console.log('Sign`ling state : ', newConnection.signalingState)
@@ -273,11 +277,6 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
 
     if (newConnection.signalingState !== 'stable') {
       console.log("Skipping negotiation - not in stable state:", newConnection.signalingState)
-      return
-    }
-
-    if (newConnection.polite) {
-      console.log("Polite peer, not initiating negotiation")
       return
     }
 
