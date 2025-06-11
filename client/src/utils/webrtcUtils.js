@@ -72,15 +72,16 @@ export const addStreamToPeer = (peerConnection, stream) => {
   }
 
   try {
+    const audioTrack = stream.current.getAudioTracks()[0]
     const existingTransceiver = peerConnection.getTransceivers().find(t =>
       t.sender && t.sender.track && t.sender.track.kind === 'audio'
     )
 
     if (existingTransceiver) {
-      existingTransceiver.sender.replaceTrack(stream.current.getAudioTracks()[0])
+      existingTransceiver.sender.replaceTrack(audioTrack)
         .catch(error => console.error("Error replacing track:", error))
     } else {
-      peerConnection.addTransceiver(stream.current.getAudioTracks()[0], {
+      peerConnection.addTransceiver(audioTrack, {
         direction: 'sendrecv',
         streams: [stream.current]
       });
@@ -205,7 +206,6 @@ export const setupRemoteStreamHandler = (peerConnection, setRemoteStream) => {
   }
 }
 export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, setPeerRoom, webSocketRoom, microphoneStreamRef, audioContextRef, currentUserId) => {
-
   if (peerRef?.current?.[userInfo.userId]) {
     console.warn("Peer connection already exists for: ", userInfo.userId)
     return
@@ -247,6 +247,40 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
       return
     }
 
+    setupRemoteStreamHandler(newConnection, (stream) => {
+      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+        console.warn("Audio context in undefined or closed")
+        return
+      }
+
+      if (!stream || !stream.getAudioTracks || stream.getAudioTracks().length === 0) {
+        console.warn("Invalid stream or no audio tracks available")
+        return
+      }
+      try {
+
+        const source = audioContextRef.current.createMediaStreamSource(stream)
+        let gainNode = audioContextRef.current.createGain();
+        gainNode.gain.value = 1
+
+        source.connect(gainNode)
+        gainNode.connect(audioContextRef.current.destination)
+
+        setRemoteStreams(prev => {
+          return ({
+            ...prev, [userInfo.userId]: {
+              username: userInfo.username,
+              pfpNum: userInfo.pfpNum,
+              stream: stream,
+              nodes: { source, gainNode }
+            }
+          })
+        })
+      } catch (error) {
+        console.error("Error while setting up auido context for remote stream: ", error)
+      }
+    })
+
     isNegotiating = true
     try {
       createPeerOffer(
@@ -263,39 +297,6 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
     }
   }
 
-  setupRemoteStreamHandler(newConnection, (stream) => {
-    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-      console.warn("Audio context in undefined or closed")
-      return
-    }
-
-    if (!stream || !stream.getAudioTracks || stream.getAudioTracks().length === 0) {
-      console.warn("Invalid stream or no audio tracks available")
-      return
-    }
-    try {
-
-      const source = audioContextRef.current.createMediaStreamSource(stream)
-      let gainNode = audioContextRef.current.createGain();
-      gainNode.gain.value = 1
-
-      source.connect(gainNode)
-      gainNode.connect(audioContextRef.current.destination)
-
-      setRemoteStreams(prev => {
-        return ({
-          ...prev, [userInfo.userId]: {
-            username: userInfo.username,
-            pfpNum: userInfo.pfpNum,
-            stream: stream,
-            nodes: { source, gainNode }
-          }
-        })
-      })
-    } catch (error) {
-      console.error("Error while setting up auido context for remote stream: ", error)
-    }
-  })
 
   setupIceCandidateHandler(
     newConnection,
@@ -309,6 +310,14 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
   }))
   console.log(newConnection)
 
+  setTimeout(() => {
+    if (newConnection.signalingState === 'stable' &&
+      newConnection.iceConnectionState !== 'connected' &&
+      newConnection.iceConnectionState !== 'completed') {
+      console.log(`Forcing negotiation for ${userInfo.userId}`)
+      newConnection.onnegotiationneeded()
+    }
+  }, 1000)
 }
 
 const handleOffer = async (offer, peerRef, webSocket) => {
@@ -333,20 +342,22 @@ const handleOffer = async (offer, peerRef, webSocket) => {
       sdp: offer.sdp
     })
 
-    const offerCollision = (offer.type === 'offer') && (peer.signalingState !== 'stable' || peer.isNegotiating)
-    const ignoreOffer = !peer.polite && offerCollision
-
-    if (ignoreOffer) {
-      console.log("Impolite peer ignoring offer collision")
+    if (peer.signalingState === 'have-local-offer') {
+      if (peer.polite) {
+        console.log("Polite peer - performing rollback ")
+        await peer.setLocalDescription({ type: "rollback" })
+        await peer.setRemoteDescription(offerDescription)
+      } else {
+        console.warn("Impolite peer, ignoring offer ")
+        return
+      }
+    } else if (peer.signalingState === 'stable') {
+      console.log("Setting remote description for offer")
+      await peer.setRemoteDescription(offerDescription)
+    } else {
+      console.warn("unexpected state for offer : ", peer.signalingState)
       return
     }
-    if (offerCollision) {
-      console.log("Polite peer handling offer collision - rollback")
-      await peer.setLocalDescription({ type: "rollback" })
-      peer.isNegotiating = false
-    }
-
-    await peer.setRemoteDescription(offerDescription)
 
     const answer = await peer.createAnswer();
     await peer.setLocalDescription(answer)
