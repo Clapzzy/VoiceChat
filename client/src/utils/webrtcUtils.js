@@ -128,11 +128,12 @@ export const createPeerOffer = async (peerConnection, webSocket, clientToSendTo)
   try {
     if (peerConnection.signalingState !== 'stable') {
       console.warn("Cannot make an offer in current peer state. Initilizing rollback. Peer signal state :", peerConnection.signalingState)
+      return
     }
 
     if (peerConnection.isNegotiating) {
       console.warn('Already negotiating, skipping creation')
-      return false
+      return
     }
 
     peerConnection.isNegotiating = true
@@ -181,12 +182,6 @@ export const createPeerOffer = async (peerConnection, webSocket, clientToSendTo)
 export const setupIceCandidateHandler = (peerConnection, webSocket, clientToSendTo) => {
   peerConnection.onicecandidate = (event) => {
     if (event.candidate && peerConnection.localDescription) {
-      console.log("sending candidate with event.candidate : ", event.candidate)
-      console.log("what i am sending from the webSocket : ", JSON.stringify({
-        type: 'candidate',
-        candidate: event.candidate,
-        to: clientToSendTo
-      }))
       webSocket.send(JSON.stringify({
         type: 'candidate',
         candidate: event.candidate,
@@ -219,8 +214,7 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
   console.log("creating a peer with the id : ", userInfo.userId)
   const newConnection = creatPeerConnection()
 
-  console.log(`Peer id id be like : ${currentUserId.current} and user id ${userInfo.userId}`,)
-  newConnection.polite = hashString(currentUserId.current) > hashString(userInfo.userId)
+  newConnection.polite = hashString(currentUserId.current) < hashString(userInfo.userId)
 
   addStreamToPeer(newConnection, microphoneStreamRef)
 
@@ -253,16 +247,13 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
       return
     }
 
-    console.log("userid Be like : ", userInfo.userId)
     isNegotiating = true
     try {
-      if (!newConnection.polite) {
-        createPeerOffer(
-          newConnection,
-          webSocketRoom,
-          userInfo.userId
-        )
-      }
+      createPeerOffer(
+        newConnection,
+        webSocketRoom,
+        userInfo.userId
+      )
     } catch (error) {
       console.error('Negotiation error: ', error)
     } finally {
@@ -322,7 +313,7 @@ export const initializePeerConnection = (setRemoteStreams, userInfo, peerRef, se
 
 const handleOffer = async (offer, peerRef, webSocket) => {
   let timeWaited = 0
-  console.log("Handling offer from: ", offer.from)
+  console.log("Handling offer from: ", offer)
 
   while (!peerRef.current[offer.from] && timeWaited < 50) {
     await sleep(100)
@@ -342,44 +333,23 @@ const handleOffer = async (offer, peerRef, webSocket) => {
       sdp: offer.sdp
     })
 
-    if (peer.signalingState === 'have-local-offer') {
-      if (peer.polite) {
-        console.log("Polite peer. roolback")
-        await peer.setLocalDescription({ type: "rollback" })
-        await peer.setRemoteDescription(offerDescription)
+    const offerCollision = (offer.type === 'offer') && (peer.signalingState !== 'stable' || peer.isNegotiating)
+    const ignoreOffer = !peer.polite && offerCollision
 
-      } else {
-        console.warn("Impolite peer. Ignoring offer")
-        return
-      }
-    } else if (peer.signalingState === 'stable') {
-      await peer.setRemoteDescription(offerDescription)
-    } else {
-      console.warn("Unexpected singlaing state for offer: ", peer.signalingState)
+    if (ignoreOffer) {
+      console.log("Impolite peer ignoring offer collision")
       return
     }
+    if (offerCollision) {
+      console.log("Polite peer handling offer collision - rollback")
+      await peer.setLocalDescription({ type: "rollback" })
+      peer.isNegotiating = false
+    }
+
+    await peer.setRemoteDescription(offerDescription)
 
     const answer = await peer.createAnswer();
     await peer.setLocalDescription(answer)
-
-    //dont know weather to use
-    /*
-       const waitForICEGathering = new Promise(resolve => {
-         if (peer.iceGatheringState === 'complete') {
-           resolve()
-         } else {
-           const checkState = () => {
-             if (peer.iceGatheringState === 'complete') {
-               peer.removeEventListener('icegatheringstatechange', checkState)
-               resolve()
-             }
-           }
-           peer.addEventListener('icegatheringstatechange', checkState)
-         }
-       })
-   
-       await waitForICEGathering
-      */
 
     webSocket.send(JSON.stringify({
       type: 'answer',
@@ -430,7 +400,6 @@ const handleAnswer = async (message, peerRef) => {
 
 const handleCandidate = async (message, peerRef) => {
   try {
-    console.log("candidate before parsing : ", message)
     let candidate
     if (typeof message.candidate === 'string') {
       candidate = JSON.parse(message.candidate)
@@ -438,7 +407,6 @@ const handleCandidate = async (message, peerRef) => {
       candidate = message.candidate
     }
 
-    console.log("candidate : ", candidate)
     const peer = peerRef.current[message.from]
 
     if (candidate && peer) {
@@ -524,6 +492,7 @@ async function handleMessage(message, peerRef, webSocket, idAwaiter, setRemoteSt
         await handleOffer(message, peerRef, webSocket)
         break
       case 'answer':
+        console.log("Answer recieved")
         await handleAnswer(message, peerRef)
         break
       case 'candidate':
