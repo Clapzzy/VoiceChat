@@ -78,7 +78,6 @@ export function useSetUpAudioMic() {
         const mediaStream = await navigator.mediaDevices.getUserMedia(constraints)
 
         if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-          /*
           andinRef.current = audioContextRef.current.createGain()
 
           const destinationNode = audioContextRef.current.createMediaStreamDestination()
@@ -88,10 +87,11 @@ export function useSetUpAudioMic() {
           micNode.connect(gainRef.current)
           gainRef.current.connect(destinationNode)
           microphoneStreamRef.current = destinationNode.stream
-          */
+          /*
           const returnArr = createTestAudioStream(microphoneStreamRef, audioContextRef, 440, 5)
           oscilatorRef.current = returnArr[0]
           gainRef.current = returnArr[1]
+          */
         }
       } catch (error) {
         console.log('Error setting up the microphone', error)

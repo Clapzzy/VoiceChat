@@ -5,10 +5,7 @@ import { LoginScreen } from './loginScreen'
 import { WebrtcChat } from './actualApp'
 
 function App() {
-  const [userInfo, setUserInfo] = useState({
-    username: "Clappzy",
-    pfpNum: 1
-  })
+  const [userInfo, setUserInfo] = useState(null)
   return (
     <>
       {userInfo

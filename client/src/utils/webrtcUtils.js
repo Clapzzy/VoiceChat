@@ -441,6 +441,7 @@ const handleCandidate = async (message, peerRef) => {
 const processQueuedCandidates = async (peer) => {
   if (peer.pendingCandidates && peer.remoteDescription) {
     for (const candidate of peer.pendingCandidates) {
+      console.log("queued candidates !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
       try {
         await peer.addIceCandidate(new RTCIceCandidate(candidate))
       } catch (error) {
