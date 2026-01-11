@@ -1,6 +1,6 @@
 # WebRTC Voice Chat App
 
-## ⚠️ **Work in Progress** ⚠️
+##  **Work in Progress** 
 
 This is still very much a work in progress! If you run into connection issues or things just don’t work, it’s probably because **I haven’t set up a TURN server yet**. WebRTC needs that to work properly across different networks, so yeah… expect some problems for now.
 
